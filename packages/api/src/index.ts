@@ -129,8 +129,12 @@ if (isProd) {
 
 const start = async () => {
   try {
-    // Run pending migrations before starting the server
-    await runMigrations();
+    // Run pending migrations before starting the server — non-fatal
+    try {
+      await runMigrations();
+    } catch (migErr) {
+      console.error('[Startup] Migration error (non-fatal):', migErr);
+    }
 
     const port = Number(process.env.PORT) || 3000;
     await app.listen({ port, host: '0.0.0.0' });
@@ -146,9 +150,14 @@ const start = async () => {
     process.once('SIGTERM', shutdown);
     process.once('SIGINT', shutdown);
   } catch (err) {
-    app.log.error(err);
+    console.error('[Startup] Fatal error:', err);
     process.exit(1);
   }
 };
+
+// Catch unhandled rejections so the process doesn't die silently
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process] Unhandled rejection:', reason);
+});
 
 start();
