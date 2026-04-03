@@ -7,7 +7,7 @@
 import { pool } from '../../db/client.js';
 import { config } from '../../config.js';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { canSuspend, canReactivate, isPlatformCostAlertTriggered } from './admin.pure.js';
 
