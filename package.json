@@ -1,0 +1,24 @@
+{
+  "name": "augustus-ai-sales-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/api && npm run build -w packages/business-dashboard && npm run build -w packages/admin-dashboard",
+    "start": "node packages/api/dist/index.js",
+    "dev": "concurrently -n api,business,admin -c blue,green,yellow \"npm run dev -w packages/api\" \"npm run dev -w packages/business-dashboard\" \"npm run dev -w packages/admin-dashboard\"",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

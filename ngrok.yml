@@ -1,0 +1,16 @@
+version: "3"
+agent:
+    authtoken: 3BLmYdQulBExTckpQug3A4FVDTX_5XmJRUetFXEmWw3sj49Yc
+
+tunnels:
+  frontend:
+    proto: http
+    addr: 5173
+    domain: unspecious-prepalaeolithic-paulita.ngrok-free.app
+    schemes:
+      - https
+  api:
+    proto: http
+    addr: 3000
+    schemes:
+      - https
