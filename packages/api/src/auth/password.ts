@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 
-const ROUNDS = 12;
+const ROUNDS = process.env.NODE_ENV === 'production' ? 10 : 12;
 
 /**
  * Returns true if the password meets all criteria:

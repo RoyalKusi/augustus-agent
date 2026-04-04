@@ -96,16 +96,14 @@ const start = async () => {
       }
     }
 
-    // Run migrations (non-fatal)
-    try {
-      await runMigrations();
-    } catch (migErr) {
-      console.error('[Startup] Migration error (non-fatal):', migErr);
-    }
-
     const port = Number(process.env.PORT) || 3000;
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`[Startup] Server listening on port ${port}`);
+
+    // Run migrations in background after server is up (non-fatal, non-blocking)
+    runMigrations().catch((migErr) => {
+      console.error('[Startup] Migration error (non-fatal):', migErr);
+    });
 
     void startConversationEngineConsumer();
 

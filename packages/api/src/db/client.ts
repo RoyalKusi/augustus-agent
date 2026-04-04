@@ -25,7 +25,7 @@ export const pool = new Pool({
   password: dbPassword,
   max: Number(process.env.DB_POOL_MAX ?? 10),
   idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 30_000,
   ssl: dbSsl ? { rejectUnauthorized: false } : false,
 });
 
