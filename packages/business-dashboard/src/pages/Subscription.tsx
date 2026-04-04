@@ -140,10 +140,10 @@ export default function Subscription() {
       });
 
       // Redirect to Paynow payment page
-      // Store poll info in URL so we can check on return
-      const returnUrl = `${window.location.origin}${window.location.pathname}?paynow_ref=${encodeURIComponent(result.paynowReference)}&poll_url=${encodeURIComponent(result.pollUrl)}&tier=${selectedPlan}`;
-
-      // Open Paynow in same tab
+      if (!result.paymentUrl) {
+        setError('Failed to get payment URL from Paynow. Please try again.');
+        return;
+      }
       window.location.href = result.paymentUrl;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to initiate payment');

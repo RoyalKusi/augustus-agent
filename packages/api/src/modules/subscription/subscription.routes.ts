@@ -129,6 +129,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return reply.send({
+        paymentUrl: result.paymentUrl,
         paynowReference: result.paynowReference,
         pollUrl: result.pollUrl,
       });

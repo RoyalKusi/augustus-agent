@@ -4,6 +4,7 @@
  * Requirements: 2.1, 2.2, 2.5, 2.6
  */
 
+import { createHash } from 'crypto';
 import { config } from '../../config.js';
 import { activateSubscription, handleFailedRenewalPayment } from './subscription.service.js';
 import type { PlanTier } from './plans.js';
@@ -14,6 +15,7 @@ export interface PaynowChargeResult {
   success: boolean;
   paynowReference: string | null;
   pollUrl: string | null;
+  paymentUrl: string | null;
   error?: string;
 }
 
@@ -22,11 +24,11 @@ export interface PaynowStatusResult {
   paynowReference: string | null;
 }
 
-// ─── Paynow API client (stub — real HTTP calls wired in Task 9) ───────────────
+// ─── Paynow API client ────────────────────────────────────────────────────────
 
 /**
- * Initiate a recurring subscription charge via Paynow.
- * Returns a poll URL and reference for status tracking.
+ * Initiate a subscription charge via Paynow.
+ * Returns a redirect URL, poll URL and reference for status tracking.
  */
 export async function initiateSubscriptionCharge(
   businessId: string,
@@ -35,20 +37,53 @@ export async function initiateSubscriptionCharge(
   description: string,
 ): Promise<PaynowChargeResult> {
   if (!config.paynow.integrationId || !config.paynow.integrationKey) {
-    return {
-      success: false,
-      paynowReference: null,
-      pollUrl: null,
-      error: 'Paynow integration not configured.',
-    };
+    return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: 'Paynow integration not configured.' };
   }
 
-  // TODO: Replace with real Paynow API call when subscription billing is live
-  const paynowReference = `SUB-${businessId.slice(0, 8)}-${Date.now()}`;
-  const pollUrl = `https://www.paynow.co.zw/interface/returntransaction/${paynowReference}`;
+  const reference = `SUB-${businessId.slice(0, 8)}-${Date.now()}`;
+  const returnUrl = config.paynow.returnUrl;
+  const resultUrl = config.paynow.resultUrl;
 
-  void email; void description; // used in real implementation
-  return { success: true, paynowReference, pollUrl };
+  // Build Paynow initiation request
+  const params = new URLSearchParams({
+    id: config.paynow.integrationId,
+    reference,
+    amount: amountUsd.toFixed(2),
+    additionalinfo: description,
+    returnurl: returnUrl,
+    resulturl: resultUrl,
+    status: 'Message',
+    authemail: email,
+  });
+
+  // Compute hash: MD5(id + reference + amount + additionalinfo + returnurl + resulturl + status + key)
+  const hashStr = `${config.paynow.integrationId}${reference}${amountUsd.toFixed(2)}${description}${returnUrl}${resultUrl}Message${config.paynow.integrationKey}`;
+  const hash = createHash('md5').update(hashStr).digest('hex').toUpperCase();
+  params.set('hash', hash);
+
+  try {
+    const response = await fetch('https://www.paynow.co.zw/interface/initiatetransaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    const text = await response.text();
+    const parsed = Object.fromEntries(new URLSearchParams(text));
+
+    if (parsed['status']?.toLowerCase() !== 'ok') {
+      return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: parsed['error'] ?? 'Paynow initiation failed.' };
+    }
+
+    return {
+      success: true,
+      paynowReference: parsed['paynowreference'] ?? reference,
+      pollUrl: parsed['pollurl'] ?? null,
+      paymentUrl: parsed['browserurl'] ?? null,
+    };
+  } catch (err) {
+    return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: err instanceof Error ? err.message : 'Network error.' };
+  }
 }
 
 /**
