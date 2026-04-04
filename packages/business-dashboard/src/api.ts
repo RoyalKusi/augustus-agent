@@ -26,8 +26,8 @@ export async function apiFetch<T = unknown>(
     } catch {
       // ignore
     }
-    // Redirect to login on auth errors
-    if (res.status === 401) {
+    // Redirect to login on auth errors (only if currently on a dashboard page)
+    if (res.status === 401 && window.location.pathname.startsWith('/dashboard')) {
       localStorage.removeItem('augustus_token');
       window.location.href = '/login';
     }

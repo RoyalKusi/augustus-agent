@@ -16,40 +16,33 @@ import PaymentSettings from './pages/PaymentSettings';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const token = localStorage.getItem('augustus_token');
-  if (!token) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
 export default function App() {
+  const token = localStorage.getItem('augustus_token');
+
   return (
     <BrowserRouter>
       <ErrorBoundary>
         <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route
-          path="/dashboard"
-          element={<RequireAuth><DashboardLayout /></RequireAuth>}
-        >
-          <Route index element={<Navigate to="/dashboard/subscription" replace />} />
-          <Route path="subscription" element={<Subscription />} />
-          <Route path="whatsapp" element={<WhatsAppSetup />} />
-          <Route path="catalogue" element={<Catalogue />} />
-          <Route path="training" element={<Training />} />
-          <Route path="conversations" element={<Conversations />} />
-          <Route path="orders" element={<Orders />} />
-          <Route path="revenue" element={<Revenue />} />
-          <Route path="support" element={<Support />} />
-          <Route path="payments" element={<PaymentSettings />} />
-          <Route path="payment-settings" element={<PaymentSettings />} />
-        </Route>
-      </Routes>
+          <Route path="/" element={<Navigate to={token ? '/dashboard' : '/login'} replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<Navigate to="/dashboard/subscription" replace />} />
+            <Route path="subscription" element={<Subscription />} />
+            <Route path="whatsapp" element={<WhatsAppSetup />} />
+            <Route path="catalogue" element={<Catalogue />} />
+            <Route path="training" element={<Training />} />
+            <Route path="conversations" element={<Conversations />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="revenue" element={<Revenue />} />
+            <Route path="support" element={<Support />} />
+            <Route path="payments" element={<PaymentSettings />} />
+            <Route path="payment-settings" element={<PaymentSettings />} />
+          </Route>
+        </Routes>
       </ErrorBoundary>
     </BrowserRouter>
   );
