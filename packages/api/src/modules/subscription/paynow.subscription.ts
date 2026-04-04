@@ -56,9 +56,10 @@ export async function initiateSubscriptionCharge(
     authemail: email,
   });
 
-  // Compute hash: MD5(id + reference + amount + additionalinfo + returnurl + resulturl + status + key)
+  // Hash: SHA512 of (id + reference + amount + additionalinfo + returnurl + resulturl + status + integrationKey)
+  // Field order must match exactly — do NOT include authemail or hash in the hash string
   const hashStr = `${config.paynow.integrationId}${reference}${amountUsd.toFixed(2)}${description}${returnUrl}${resultUrl}Message${config.paynow.integrationKey}`;
-  const hash = createHash('md5').update(hashStr).digest('hex').toUpperCase();
+  const hash = createHash('sha512').update(hashStr, 'utf8').digest('hex').toUpperCase();
   params.set('hash', hash);
 
   try {
