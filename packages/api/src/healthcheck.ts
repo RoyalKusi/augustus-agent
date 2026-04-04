@@ -1,44 +1,27 @@
-// Minimal health check server — used to diagnose Hostinger startup issues
+// Ultra-minimal healthcheck — no imports, just raw http
 import http from 'http';
 
 const port = Number(process.env.PORT) || 3000;
 
-// Test loading critical modules
-const diagnostics: Record<string, string> = {};
-
-try {
-  await import('./db/client.js');
-  diagnostics.db = 'ok';
-} catch (e) {
-  diagnostics.db = String(e);
-}
-
-try {
-  await import('./redis/client.js');
-  diagnostics.redis = 'ok';
-} catch (e) {
-  diagnostics.redis = String(e);
-}
-
-try {
-  await import('./config.js');
-  diagnostics.config = 'ok';
-} catch (e) {
-  diagnostics.config = String(e);
-}
-
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
+  const info = {
     status: 'ok',
     port,
     env: process.env.NODE_ENV,
     node: process.version,
     time: new Date().toISOString(),
-    diagnostics,
-  }));
+    envVars: {
+      DB_HOST: (process.env.DB_HOST || process.env.PGHOST) ? 'set' : 'missing',
+      DB_PASSWORD: (process.env.DB_PASSWORD || process.env.PGPASSWORD) ? 'set' : 'missing',
+      REDIS_URL: process.env.REDIS_URL ? 'set' : 'missing',
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ? `${process.env.ENCRYPTION_KEY.length} chars` : 'missing',
+      JWT_SECRET: process.env.JWT_SECRET ? 'set' : 'missing',
+    },
+  };
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(info, null, 2));
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`Health check server running on port ${port}`);
+  console.log(`Healthcheck listening on port ${port}`);
 });

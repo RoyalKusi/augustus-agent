@@ -1,21 +1,36 @@
 import pg from 'pg';
-import 'dotenv/config';
 import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+// Load .env only in non-production (Hostinger injects env vars directly in production)
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const { config } = await import('dotenv');
+    config();
+  } catch { /* dotenv not available, skip */ }
+}
+
 const { Pool } = pg;
 
+// Support both DB_* (our convention) and PG* (Postgres standard / Neon convention)
+const dbHost = process.env.DB_HOST ?? process.env.PGHOST ?? 'localhost';
+const dbPort = Number(process.env.DB_PORT ?? process.env.PGPORT ?? 5432);
+const dbName = process.env.DB_NAME ?? process.env.PGDATABASE ?? 'augustus';
+const dbUser = process.env.DB_USER ?? process.env.PGUSER ?? 'postgres';
+const dbPassword = process.env.DB_PASSWORD ?? process.env.PGPASSWORD ?? '';
+const dbSsl = process.env.DB_SSL === 'true' || process.env.PGSSLMODE === 'require';
+
 export const pool = new Pool({
-  host: process.env.DB_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? 5432),
-  database: process.env.DB_NAME ?? 'augustus',
-  user: process.env.DB_USER ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? '',
-  max: Number(process.env.DB_POOL_MAX ?? 20),
+  host: dbHost,
+  port: dbPort,
+  database: dbName,
+  user: dbUser,
+  password: dbPassword,
+  max: Number(process.env.DB_POOL_MAX ?? 10),
   idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 10_000,
+  ssl: dbSsl ? { rejectUnauthorized: false } : false,
 });
 
 pool.on('error', (err) => {

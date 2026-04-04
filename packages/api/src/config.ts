@@ -1,4 +1,10 @@
-import 'dotenv/config';
+// Load .env only in non-production (Hostinger injects env vars directly in production)
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const { config } = await import('dotenv');
+    config();
+  } catch { /* dotenv not available, skip */ }
+}
 
 function required(name: string): string {
   const val = process.env[name];
@@ -15,13 +21,13 @@ export const config = {
   port: Number(optional('PORT', '3000')),
 
   db: {
-    host: optional('DB_HOST', 'localhost'),
-    port: Number(optional('DB_PORT', '5432')),
-    name: optional('DB_NAME', 'augustus'),
-    user: optional('DB_USER', 'postgres'),
-    password: optional('DB_PASSWORD', ''),
-    ssl: process.env.DB_SSL === 'true',
-    poolMax: Number(optional('DB_POOL_MAX', '20')),
+    host: process.env.DB_HOST ?? process.env.PGHOST ?? 'localhost',
+    port: Number(process.env.DB_PORT ?? process.env.PGPORT ?? 5432),
+    name: process.env.DB_NAME ?? process.env.PGDATABASE ?? 'augustus',
+    user: process.env.DB_USER ?? process.env.PGUSER ?? 'postgres',
+    password: process.env.DB_PASSWORD ?? process.env.PGPASSWORD ?? '',
+    ssl: process.env.DB_SSL === 'true' || process.env.PGSSLMODE === 'require',
+    poolMax: Number(optional('DB_POOL_MAX', '10')),
   },
 
   redis: {
