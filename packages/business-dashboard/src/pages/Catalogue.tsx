@@ -42,19 +42,18 @@ async function uploadImages(files: File[], token: string): Promise<string[]> {
   for (const file of files) {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch(`${BASE_URL}/catalogue/upload-image`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: fd,
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      throw new Error(body.error ?? `Image upload failed (HTTP ${res.status})`);
+    try {
+      const res = await fetch(`${BASE_URL}/catalogue/upload-image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) continue; // skip failed uploads silently
+      const data = await res.json() as { url?: string };
+      if (data.url) urls.push(data.url);
+    } catch {
+      // skip on network error
     }
-    const data = await res.json() as { url: string };
-    urls.push(data.url);
   }
   return urls;
 }

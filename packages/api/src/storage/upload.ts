@@ -9,13 +9,22 @@ import { s3, S3_BUCKET } from './client.js';
 // Support attachments:  support/{businessId}/{ticketId}/{filename}
 
 /**
- * Uploads a file to S3 and returns the public URL (or key if no public endpoint configured).
+ * Uploads a file to S3 and returns the public URL.
+ * Returns null if S3 is not configured.
  */
 export async function uploadFile(
   key: string,
   body: Buffer | Uint8Array,
   contentType: string,
-): Promise<string> {
+): Promise<string | null> {
+  const endpoint = process.env.S3_ENDPOINT;
+  const accessKey = process.env.S3_ACCESS_KEY_ID;
+
+  // Skip upload if S3 is not configured
+  if (!endpoint || endpoint === 'https://your-s3-endpoint' || !accessKey) {
+    return null;
+  }
+
   await s3.send(
     new PutObjectCommand({
       Bucket: S3_BUCKET,
@@ -25,11 +34,7 @@ export async function uploadFile(
     }),
   );
 
-  const endpoint = process.env.S3_ENDPOINT;
-  if (endpoint) {
-    return `${endpoint.replace(/\/$/, '')}/${S3_BUCKET}/${key}`;
-  }
-  return key;
+  return `${endpoint.replace(/\/$/, '')}/${S3_BUCKET}/${key}`;
 }
 
 /**

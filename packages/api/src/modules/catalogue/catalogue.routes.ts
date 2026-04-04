@@ -39,6 +39,9 @@ export async function catalogueRoutes(app: FastifyInstance): Promise<void> {
       const buffer = await data.toBuffer();
 
       const url = await uploadFile(key, buffer, data.mimetype);
+      if (!url) {
+        return reply.status(503).send({ error: 'Image storage is not configured. Products can still be added without images.' });
+      }
       return reply.send({ url });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed.';
