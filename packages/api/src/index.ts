@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { existsSync, createReadStream } from 'fs';
 import { runMigrations } from './db/client.js';
 import { authRoutes } from './modules/auth/index.js';
 import { subscriptionRoutes } from './modules/subscription/index.js';
@@ -74,11 +74,12 @@ const start = async () => {
         await app.register(staticPlugin, {
           root: adminDist,
           prefix: '/admin-app/',
-          decorateReply: false,
+          decorateReply: true,
           wildcard: false,
         });
-        // SPA fallback for admin — must be registered after static plugin
-        app.get('/admin-app', (_req, reply) => reply.sendFile('index.html', adminDist));
+        app.get('/admin-app', (_req, reply) => {
+          reply.type('text/html').send(createReadStream(join(adminDist, 'index.html')));
+        });
       }
 
       if (existsSync(businessDist)) {
@@ -90,7 +91,7 @@ const start = async () => {
         });
         // SPA fallback — serve index.html for any unmatched route
         app.setNotFoundHandler((_req, reply) => {
-          reply.sendFile('index.html', businessDist);
+          reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
         });
       }
     }
