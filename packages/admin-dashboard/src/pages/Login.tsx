@@ -16,11 +16,15 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const res = await apiFetch<{ mfaRequired?: boolean }>('/admin/auth/login', {
+      const res = await apiFetch<{ mfaRequired?: boolean; token?: string }>('/admin/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password, totpCode: '' }),
       });
-      if (res.mfaRequired) {
+      if (res.token) {
+        // MFA not enabled — logged in directly
+        localStorage.setItem('augustus_operator_token', res.token);
+        navigate('/admin');
+      } else if (res.mfaRequired) {
         setStep(2);
       } else {
         setError('Unexpected response from server.');
