@@ -75,9 +75,7 @@ const start = async () => {
           root: adminDist,
           prefix: '/admin-app/',
           decorateReply: false,
-        });
-        app.get('/admin-app/*', (_req, reply) => {
-          reply.sendFile('index.html', adminDist);
+          wildcard: true,
         });
       }
 
@@ -86,9 +84,7 @@ const start = async () => {
           root: businessDist,
           prefix: '/',
           decorateReply: false,
-        });
-        app.setNotFoundHandler((_req, reply) => {
-          reply.sendFile('index.html', businessDist);
+          wildcard: true,
         });
       }
     }
