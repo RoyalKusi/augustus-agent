@@ -67,7 +67,7 @@ export async function trainingRoutes(app: FastifyInstance): Promise<void> {
 
       const ext = filename.split('.').pop()?.toLowerCase() ?? 'bin';
       const key = `training/${businessId}/${randomUUID()}.${ext}`;
-      const fileUrl = await uploadFile(key, fileBuffer, mimetype);
+      const fileUrl = await uploadFile(key, fileBuffer, mimetype) ?? undefined;
 
       const displayName = label || filename;
       const entry = await createTrainingEntry(businessId, {
