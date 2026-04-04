@@ -56,9 +56,9 @@ export async function initiateSubscriptionCharge(
     authemail: email,
   };
 
-  // Hash: SHA512 of standard fields only (NOT authemail) + integration key
-  // Per Paynow docs: id + reference + amount + additionalinfo + returnurl + resulturl + status + key
-  const hashInput = config.paynow.integrationId + reference + amountUsd.toFixed(2) + description + returnUrl + resultUrl + 'Message' + config.paynow.integrationKey;
+  // Hash: SHA512 of ALL fields (in POST order, excluding hash) + integration key
+  // Per Paynow PHP SDK: iterate all values except 'hash' and concatenate
+  const hashInput = config.paynow.integrationId + reference + amountUsd.toFixed(2) + description + returnUrl + resultUrl + 'Message' + email + config.paynow.integrationKey;
   const hash = createHash('sha512').update(hashInput, 'utf8').digest('hex').toUpperCase();
 
   const params = new URLSearchParams({ ...fields, hash });
