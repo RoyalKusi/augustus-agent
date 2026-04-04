@@ -34,7 +34,10 @@ export async function uploadFile(
     }),
   );
 
-  return `${endpoint.replace(/\/$/, '')}/${S3_BUCKET}/${key}`;
+  // Use S3_PUBLIC_URL if set (e.g. Cloudflare R2 public subdomain or custom domain)
+  // Otherwise fall back to the endpoint URL
+  const publicBase = process.env.S3_PUBLIC_URL ?? endpoint;
+  return `${publicBase.replace(/\/$/, '')}/${key}`;
 }
 
 /**
