@@ -8,6 +8,9 @@ interface CreditUsage {
   status: 'active' | 'suspended';
 }
 
+// Convert USD to credits (1 credit = $0.001)
+const toCredits = (usd: number) => Math.round(usd * 1000);
+
 export default function CreditUsageWidget() {
   const [data, setData] = useState<CreditUsage | null>(null);
   const [error, setError] = useState('');
@@ -29,16 +32,18 @@ export default function CreditUsageWidget() {
 
   const pct = Math.min(100, Math.round(isNaN(data.usagePercent) ? 0 : data.usagePercent));
   const barColor = data.status === 'suspended' ? '#e53e3e' : pct >= 95 ? '#dd6b20' : '#38a169';
+  const usedCredits = toCredits(data.currentCostUsd).toLocaleString();
+  const capCredits = toCredits(data.monthlyCap).toLocaleString();
 
   return (
     <div style={{ padding: '8px 0' }}>
       <div style={{ fontSize: 12, marginBottom: 4 }}>
-        Credit Usage — <strong>{pct}%</strong>{' '}
+        AI Credits — <strong>{pct}%</strong>{' '}
         <span style={{ color: data.status === 'suspended' ? 'red' : 'green' }}>
           ({data.status})
         </span>
         <span style={{ color: '#a0aec0', marginLeft: 6 }}>
-          ${data.currentCostUsd.toFixed(2)} / ${data.monthlyCap.toFixed(2)}
+          {usedCredits} / {capCredits} credits
         </span>
       </div>
       <div style={{ background: '#e2e8f0', borderRadius: 4, height: 8, width: '100%' }}>
