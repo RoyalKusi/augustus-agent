@@ -26,6 +26,11 @@ export async function apiFetch<T = unknown>(
     } catch {
       // ignore
     }
+    // Redirect to login on auth errors
+    if (res.status === 401) {
+      localStorage.removeItem('augustus_token');
+      window.location.href = '/login';
+    }
     throw new Error(message);
   }
 

@@ -16,6 +16,12 @@ import PaymentSettings from './pages/PaymentSettings';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const token = localStorage.getItem('augustus_token');
+  if (!token) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -29,7 +35,7 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route
           path="/dashboard"
-          element={<DashboardLayout />}
+          element={<RequireAuth><DashboardLayout /></RequireAuth>}
         >
           <Route index element={<Navigate to="/dashboard/subscription" replace />} />
           <Route path="subscription" element={<Subscription />} />
@@ -41,6 +47,7 @@ export default function App() {
           <Route path="revenue" element={<Revenue />} />
           <Route path="support" element={<Support />} />
           <Route path="payments" element={<PaymentSettings />} />
+          <Route path="payment-settings" element={<PaymentSettings />} />
         </Route>
       </Routes>
       </ErrorBoundary>
