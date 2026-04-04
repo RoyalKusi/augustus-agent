@@ -45,6 +45,8 @@ export async function initiateSubscriptionCharge(
   const resultUrl = config.paynow.resultUrl;
 
   // Build fields in exact order Paynow expects
+  // authemail must match the merchant's registered Paynow email in test mode
+  const authEmail = process.env.PAYNOW_MERCHANT_EMAIL || email;
   const fields: Record<string, string> = {
     id: config.paynow.integrationId,
     reference,
@@ -53,12 +55,12 @@ export async function initiateSubscriptionCharge(
     returnurl: returnUrl,
     resulturl: resultUrl,
     status: 'Message',
-    authemail: email,
+    authemail: authEmail,
   };
 
   // Hash: SHA512 of ALL fields (in POST order, excluding hash) + integration key
   // Per Paynow PHP SDK: iterate all values except 'hash' and concatenate
-  const hashInput = config.paynow.integrationId + reference + amountUsd.toFixed(2) + description + returnUrl + resultUrl + 'Message' + email + config.paynow.integrationKey;
+  const hashInput = config.paynow.integrationId + reference + amountUsd.toFixed(2) + description + returnUrl + resultUrl + 'Message' + authEmail + config.paynow.integrationKey;
   const hash = createHash('sha512').update(hashInput, 'utf8').digest('hex').toUpperCase();
 
   const params = new URLSearchParams({ ...fields, hash });
