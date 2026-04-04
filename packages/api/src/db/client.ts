@@ -3,13 +3,9 @@ import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Load .env only in non-production (Hostinger injects env vars directly in production)
-if (process.env.NODE_ENV !== 'production') {
-  try {
-    const { config } = await import('dotenv');
-    config();
-  } catch { /* dotenv not available, skip */ }
-}
+// dotenv is a no-op if the env vars are already set (e.g. Hostinger injects them directly)
+import { config as dotenvConfig } from 'dotenv';
+try { dotenvConfig(); } catch { /* ignore */ }
 
 const { Pool } = pg;
 
