@@ -75,8 +75,10 @@ const start = async () => {
           root: adminDist,
           prefix: '/admin-app/',
           decorateReply: false,
-          wildcard: true,
+          wildcard: false,
         });
+        // SPA fallback for admin — must be registered after static plugin
+        app.get('/admin-app', (_req, reply) => reply.sendFile('index.html', adminDist));
       }
 
       if (existsSync(businessDist)) {
@@ -84,7 +86,11 @@ const start = async () => {
           root: businessDist,
           prefix: '/',
           decorateReply: false,
-          wildcard: true,
+          wildcard: false,
+        });
+        // SPA fallback — serve index.html for any unmatched route
+        app.setNotFoundHandler((_req, reply) => {
+          reply.sendFile('index.html', businessDist);
         });
       }
     }
