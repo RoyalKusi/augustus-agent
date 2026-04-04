@@ -44,8 +44,8 @@ export async function initiateSubscriptionCharge(
   const returnUrl = config.paynow.returnUrl;
   const resultUrl = config.paynow.resultUrl;
 
-  // Build Paynow initiation request
-  const params = new URLSearchParams({
+  // Build fields in exact order Paynow expects
+  const fields: Record<string, string> = {
     id: config.paynow.integrationId,
     reference,
     amount: amountUsd.toFixed(2),
@@ -54,13 +54,13 @@ export async function initiateSubscriptionCharge(
     resulturl: resultUrl,
     status: 'Message',
     authemail: email,
-  });
+  };
 
-  // Hash: SHA512 of (id + reference + amount + additionalinfo + returnurl + resulturl + status + integrationKey)
-  // Field order must match exactly — do NOT include authemail or hash in the hash string
-  const hashStr = `${config.paynow.integrationId}${reference}${amountUsd.toFixed(2)}${description}${returnUrl}${resultUrl}Message${config.paynow.integrationKey}`;
-  const hash = createHash('sha512').update(hashStr, 'utf8').digest('hex').toUpperCase();
-  params.set('hash', hash);
+  // Hash: SHA512 of all field values (in order, excluding hash) + integration key
+  const hashInput = Object.values(fields).join('') + config.paynow.integrationKey;
+  const hash = createHash('sha512').update(hashInput, 'utf8').digest('hex').toUpperCase();
+
+  const params = new URLSearchParams({ ...fields, hash });
 
   try {
     const response = await fetch('https://www.paynow.co.zw/interface/initiatetransaction', {
