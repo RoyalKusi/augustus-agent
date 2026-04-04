@@ -94,17 +94,21 @@ export interface CreditUsage {
 
 export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
   // Get accumulated cost from token_usage
-  const usageResult = await pool.query<{ accumulated_cost_usd: string; suspended: boolean }>(
-    `SELECT accumulated_cost_usd, suspended FROM token_usage
+  const usageResult = await pool.query<{ accumulated_cost_usd: string }>(
+    `SELECT accumulated_cost_usd FROM token_usage
      WHERE business_id = $1
      ORDER BY billing_cycle_start DESC
      LIMIT 1`,
     [businessId],
   );
 
-  // Get tier cap from subscription
-  const subResult = await pool.query<{ plan: string }>(
-    `SELECT plan FROM subscriptions WHERE business_id = $1 AND status = 'active' LIMIT 1`,
+  // Get tier cap and business status from subscription + business
+  const subResult = await pool.query<{ plan: string; business_status: string }>(
+    `SELECT s.plan, b.status AS business_status
+     FROM subscriptions s
+     JOIN businesses b ON b.id = s.business_id
+     WHERE s.business_id = $1 AND s.status = 'active'
+     LIMIT 1`,
     [businessId],
   );
 
@@ -112,12 +116,11 @@ export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
   const sub = subResult.rows[0];
   const currentCostUsd = row ? Number(row.accumulated_cost_usd) : 0;
 
-  const tierCaps: Record<string, number> = { silver: 5, gold: 15, platinum: 50 };
-  const monthlyCap = sub ? (tierCaps[sub.plan] ?? 5) : 5;
+  const tierCaps: Record<string, number> = { silver: 12, gold: 30, platinum: 70 };
+  const monthlyCap = sub ? (tierCaps[sub.plan] ?? 12) : 12;
 
-  const usagePercent =
-    monthlyCap > 0 ? Math.round((currentCostUsd / monthlyCap) * 10000) / 100 : 0;
-  const status: 'active' | 'suspended' = row?.suspended ? 'suspended' : 'active';
+  const usagePercent = monthlyCap > 0 ? Math.round((currentCostUsd / monthlyCap) * 10000) / 100 : 0;
+  const status: 'active' | 'suspended' = sub?.business_status === 'suspended' ? 'suspended' : 'active';
 
   return { currentCostUsd, monthlyCap, usagePercent, status };
 }

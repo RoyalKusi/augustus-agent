@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 
 interface CreditUsage {
-  used_usd: number;
-  cap_usd: number;
-  percentage: number;
+  currentCostUsd: number;
+  monthlyCap: number;
+  usagePercent: number;
   status: 'active' | 'suspended';
 }
 
@@ -27,7 +27,7 @@ export default function CreditUsageWidget() {
   if (error) return <div style={{ color: 'red', fontSize: 12 }}>Credit usage unavailable</div>;
   if (!data) return <div style={{ fontSize: 12 }}>Loading credit usage…</div>;
 
-  const pct = Math.min(100, Math.round(data.percentage));
+  const pct = Math.min(100, Math.round(isNaN(data.usagePercent) ? 0 : data.usagePercent));
   const barColor = data.status === 'suspended' ? '#e53e3e' : pct >= 95 ? '#dd6b20' : '#38a169';
 
   return (
@@ -37,17 +37,12 @@ export default function CreditUsageWidget() {
         <span style={{ color: data.status === 'suspended' ? 'red' : 'green' }}>
           ({data.status})
         </span>
+        <span style={{ color: '#a0aec0', marginLeft: 6 }}>
+          ${data.currentCostUsd.toFixed(2)} / ${data.monthlyCap.toFixed(2)}
+        </span>
       </div>
       <div style={{ background: '#e2e8f0', borderRadius: 4, height: 8, width: '100%' }}>
-        <div
-          style={{
-            background: barColor,
-            borderRadius: 4,
-            height: 8,
-            width: `${pct}%`,
-            transition: 'width 0.3s',
-          }}
-        />
+        <div style={{ background: barColor, borderRadius: 4, height: 8, width: `${pct}%`, transition: 'width 0.3s' }} />
       </div>
     </div>
   );
