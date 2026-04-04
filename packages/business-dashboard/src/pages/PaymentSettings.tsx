@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { apiFetch } from '../api';
 
 // ── Payment method definitions ────────────────────────────────────────────────
@@ -72,6 +73,9 @@ function detailsToMethods(details: Record<string, unknown> | null): PaymentMetho
 }
 
 export default function PaymentSettings() {
+  const location = useLocation();
+  const fromRevenue = new URLSearchParams(location.search).get('from') === 'revenue';
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +83,9 @@ export default function PaymentSettings() {
   const [success, setSuccess] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
+
+  // Show methods section if: in-chat payments disabled OR redirected from revenue page
+  const showMethods = !enabled || fromRevenue;
 
   useEffect(() => {
     apiFetch<PaymentSettingsData>('/payments/settings')
@@ -136,6 +143,12 @@ export default function PaymentSettings() {
     <div style={{ maxWidth: 560 }}>
       <h2 style={{ marginTop: 0 }}>Payment Settings</h2>
 
+      {fromRevenue && (
+        <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 6, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: '#2b6cb0' }}>
+          Add your payment details below so customers and the platform know where to send your payouts.
+        </div>
+      )}
+
       {/* In-chat payments toggle */}
       <div style={{ marginBottom: 24 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -154,8 +167,8 @@ export default function PaymentSettings() {
         </p>
       </div>
 
-      {/* External payment methods */}
-      {!enabled && (
+      {/* External payment methods — always visible when from revenue, or when in-chat disabled */}
+      {showMethods && (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 20, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>Payment Methods</h3>

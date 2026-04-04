@@ -130,7 +130,7 @@ export default function Revenue() {
         {paymentMethods.length === 0 ? (
           <div style={{ padding: '16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, fontSize: 13, color: '#92400e' }}>
             No payment methods configured. Go to{' '}
-            <a href="/dashboard/payment-settings" style={{ color: '#3182ce' }}>Payment Settings</a>
+            <a href="/dashboard/payment-settings?from=revenue" style={{ color: '#3182ce' }}>Payment Settings</a>
             {' '}to add EcoCash, banking, or other payment details.
           </div>
         ) : (
