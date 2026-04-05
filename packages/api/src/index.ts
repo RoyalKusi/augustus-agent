@@ -54,6 +54,26 @@ const start = async () => {
 
     app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
 
+    // In production, register SPA page routes BEFORE API routes so browser
+    // refreshes on frontend paths serve index.html instead of hitting API handlers.
+    const isProd = process.env.NODE_ENV === 'production';
+    const businessDist = isProd ? join(__dirname, '../../business-dashboard/dist') : '';
+    const adminDist = isProd ? join(__dirname, '../../admin-dashboard/dist') : '';
+
+    if (isProd && existsSync(businessDist)) {
+      const serveBusinessIndex = (_req: unknown, reply: { type: (t: string) => { send: (s: unknown) => void } }) => {
+        reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
+      };
+      // All known SPA page routes — served before API routes to prevent conflicts
+      const spaPageRoutes = [
+        '/login', '/register', '/forgot-password', '/verify-email', '/reset-password',
+        '/subscription', '/dashboard', '/dashboard/*',
+      ];
+      for (const route of spaPageRoutes) {
+        app.get(route, serveBusinessIndex);
+      }
+    }
+
     await app.register(authRoutes);
     await app.register(subscriptionRoutes);
     await app.register(catalogueRoutes);
@@ -66,12 +86,7 @@ const start = async () => {
     await app.register(interventionRoutes);
     await app.register(legalRoutes);
 
-    // Static file serving (production only)
-    const isProd = process.env.NODE_ENV === 'production';
     if (isProd) {
-      const businessDist = join(__dirname, '../../business-dashboard/dist');
-      const adminDist = join(__dirname, '../../admin-dashboard/dist');
-
       if (existsSync(adminDist)) {
         await app.register(staticPlugin, {
           root: adminDist,
@@ -79,7 +94,6 @@ const start = async () => {
           decorateReply: true,
           wildcard: false,
         });
-        // Serve index.html for /admin-app and any deep path (SPA client-side routing)
         const serveAdminIndex = (_req: unknown, reply: { type: (t: string) => { send: (s: unknown) => void } }) => {
           reply.type('text/html').send(createReadStream(join(adminDist, 'index.html')));
         };
@@ -94,7 +108,7 @@ const start = async () => {
           decorateReply: false,
           wildcard: false,
         });
-        // SPA fallback — serve index.html for any unmatched route
+        // Catch-all fallback for any remaining unmatched routes
         app.setNotFoundHandler((_req, reply) => {
           reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
         });
