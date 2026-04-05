@@ -68,3 +68,24 @@ export function extractMessageId(payload: unknown): string | undefined {
     return undefined;
   }
 }
+
+/**
+ * Extract the phone_number_id from the metadata of a webhook payload.
+ * Used by the global webhook endpoint to resolve which business the event belongs to.
+ */
+export function extractPhoneNumberId(payload: unknown): string | undefined {
+  try {
+    const p = payload as {
+      entry?: Array<{
+        changes?: Array<{
+          value?: {
+            metadata?: { phone_number_id?: string };
+          };
+        }>;
+      }>;
+    };
+    return p?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+  } catch {
+    return undefined;
+  }
+}

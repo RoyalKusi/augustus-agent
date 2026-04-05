@@ -6,6 +6,7 @@ import {
   isDuplicate,
   enqueueWebhookPayload,
   extractMessageId,
+  extractPhoneNumberId,
 } from './webhook.service.js';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
@@ -24,13 +25,74 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * POST /webhooks/whatsapp
+   *
+   * Global Meta Cloud API webhook endpoint.
+   * Meta sends ALL subscribed WABA events to this single app-level URL.
+   * Resolves businessId from metadata.phone_number_id in the payload.
+   */
+  app.post(
+    '/webhooks/whatsapp',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
+      const rawBody: Buffer =
+        (request as unknown as { rawBody: Buffer }).rawBody ??
+        Buffer.from(JSON.stringify(request.body ?? {}));
+
+      // Validate HMAC signature
+      const secret = config.meta.appSecret;
+      if (!validateHmacSignature(rawBody, signature, secret)) {
+        return reply.status(403).send({ error: 'Invalid signature' });
+      }
+
+      // Acknowledge immediately — Meta requires a response within 5 seconds
+      reply.status(200).send();
+
+      // Async processing: resolve businessId from phone_number_id, then enqueue
+      void (async () => {
+        try {
+          const payload = request.body;
+          const phoneNumberId = extractPhoneNumberId(payload);
+          const messageId = extractMessageId(payload);
+
+          if (!phoneNumberId) {
+            app.log.info('Webhook received with no phone_number_id — skipping');
+            return;
+          }
+
+          // Look up businessId from phone_number_id
+          const result = await pool.query<{ business_id: string }>(
+            `SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`,
+            [phoneNumberId],
+          );
+          const businessId = result.rows[0]?.business_id;
+
+          if (!businessId) {
+            app.log.warn({ phoneNumberId }, 'No business found for phone_number_id — skipping');
+            return;
+          }
+
+          if (messageId) {
+            const duplicate = await isDuplicate(messageId);
+            if (duplicate) {
+              app.log.info({ businessId, messageId }, 'Duplicate webhook message — skipping enqueue');
+              return;
+            }
+          }
+
+          await enqueueWebhookPayload(businessId, payload);
+        } catch (err) {
+          app.log.error({ err }, 'Failed to process global webhook event');
+        }
+      })();
+    },
+  );
+
+  /**
    * POST /webhooks/whatsapp/:businessId
    *
+   * Per-business webhook endpoint (legacy / manual setup path).
    * Receives inbound Meta Cloud API events.
-   * 1. Validates X-Hub-Signature-256 HMAC — returns 403 if invalid.
-   * 2. Returns HTTP 200 immediately (Meta requires < 5 s).
-   * 3. Async: deduplicates by message ID in Redis (TTL 24 h).
-   * 4. Async: enqueues to message queue if not a duplicate.
    */
   app.post(
     '/webhooks/whatsapp/:businessId',
