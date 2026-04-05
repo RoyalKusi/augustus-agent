@@ -59,7 +59,7 @@
     - Ensure the message is sent only once per suspension event (not on every subsequent message)
     - _Requirements: 3.8_
 
-- [ ] 5. WhatsApp Integration Service
+- [x] 5. WhatsApp Integration Service
   - [x] 5.1 Implement encrypted storage of per-business WhatsApp credentials (WABA ID, Phone Number ID, access token)
   - [x] 5.2 Implement webhook registration with Meta Cloud API including hub.challenge verification
   - [x] 5.3 Implement webhook deregistration within 60 seconds of Business deactivation
@@ -78,7 +78,7 @@
     - Route the selected Quick_Reply payload back to the Conversation Engine as a structured input within 10 seconds
     - _Requirements: 6.3_
 
-- [ ] 6. Webhook Receiver
+- [x] 6. Webhook Receiver
   - [x] 6.1 Implement POST endpoint for inbound Meta Cloud API events with HMAC signature validation
   - [x] 6.2 Implement GET endpoint for Meta hub.challenge verification
   - [x] 6.3 Implement message deduplication using Meta message ID in Redis (TTL 24 h)
@@ -108,7 +108,7 @@
   - [x] 8.7 Implement revenue summary per product (units sold, total revenue) updated on payment confirmation
   - [x] 8.8 Write property-based tests for Properties 25, 26, 27, 28
 
-- [ ] 9. Payment Processor
+- [x] 9. Payment Processor
   - [x] 9.1 Implement Paynow payment link generation on purchase confirmation (within 5 s target)
   - [x] 9.2 Implement Paynow payment status webhook receiver and polling fallback
   - [x] 9.3 Implement receipt message dispatch on payment confirmation with all required fields — Property 21
@@ -275,3 +275,7 @@
     - **Validates: Requirements 18.6**
 
   - [x] 18.11 Checkpoint — Ensure all tests pass, ask the user if questions arise.
+
+
+
+

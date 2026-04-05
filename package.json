@@ -11,7 +11,9 @@
     "dev": "concurrently -n api,business,admin -c blue,green,yellow \"npm run dev -w packages/api\" \"npm run dev -w packages/business-dashboard\" \"npm run dev -w packages/admin-dashboard\"",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:smoke": "node packages/e2e/smoke/api.smoke.js",
+    "test:e2e": "npm run test -w packages/e2e"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
