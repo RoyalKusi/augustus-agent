@@ -223,7 +223,9 @@ export async function processInboundMessage(msg) {
     claudeResponse = await callClaudeHaiku(systemPrompt, contextMessages, messageText);
   } catch (err) {
     console.error('[ConversationEngine] Claude API error:', err);
-    await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: 'Our AI assistant is temporarily unavailable. Please try again shortly.' });
+    const fallbackText = 'Our AI assistant is temporarily unavailable. Please try again shortly.';
+    await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: fallbackText });
+    await persistConversationTurn(conversationId, businessId, messageText, fallbackText, messageId, timestamp);
     return { dispatched: false };
   }
 
