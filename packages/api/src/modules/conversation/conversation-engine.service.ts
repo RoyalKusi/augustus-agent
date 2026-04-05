@@ -13,8 +13,8 @@ import type { WebhookEvent } from '../../queue/producer.js';
 
 export const CLAUDE_HAIKU_MODEL = (function() {
   const m = config.claude.model;
-  if (m.toLowerCase().includes('haiku')) return m;
-  return 'claude-haiku-20240307';
+  if (m && m.trim()) return m.trim();
+  return 'claude-3-haiku-20240307';
 })();
 
 export function filterContextWindow(messages, nowMs, maxMessages = MAX_CONTEXT_MESSAGES, windowMs = CONTEXT_WINDOW_MS) {
@@ -233,7 +233,7 @@ export async function processInboundMessage(msg) {
   await recordInferenceCost(businessId, costUsd, businessEmail);
 
   const action = parseClaudeResponse(claudeResponse.text);
-  const outboundText = action.text || claudeResponse.text;
+  const outboundText = action.text?.trim() || claudeResponse.text;
 
   // Always send the conversational text response first
   if (outboundText) {
