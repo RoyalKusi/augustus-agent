@@ -16,6 +16,7 @@ import { webhookRoutes } from './modules/webhook/webhook.routes.js';
 import { whatsappIntegrationRoutes } from './modules/whatsapp/whatsapp-integration.routes.js';
 import { paymentRoutes } from './modules/payment/payment.routes.js';
 import { interventionRoutes } from './modules/intervention/intervention.routes.js';
+import { legalRoutes } from './routes/legal.js';
 import {
   startConversationEngineConsumer,
   stopConversationEngineConsumer,
@@ -63,6 +64,7 @@ const start = async () => {
     await app.register(whatsappIntegrationRoutes, { prefix: '/whatsapp' });
     await app.register(paymentRoutes);
     await app.register(interventionRoutes);
+    await app.register(legalRoutes);
 
     // Static file serving (production only)
     const isProd = process.env.NODE_ENV === 'production';
