@@ -667,41 +667,81 @@ export async function getBusinessDashboardView(businessId: string): Promise<Reco
 // ─── Task 13.15: API key status ───────────────────────────────────────────────
 
 export interface ApiKeyStatus {
-  meta: { status: 'active' | 'expired' | 'error'; reason: string | null };
-  paynow: { status: 'active' | 'error'; reason: string | null };
+  meta: { status: 'active' | 'expired' | 'error'; reason: string | null; detail?: string | null };
+  paynow: { status: 'active' | 'error'; reason: string | null; detail?: string | null };
+  claude: { status: 'active' | 'error'; reason: string | null; detail?: string | null };
 }
 
 export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
-  // Check Meta API key using app access token (appId|appSecret)
+  // ── Meta ──────────────────────────────────────────────────────────────────
   let metaStatus: ApiKeyStatus['meta'];
   try {
     const { appId, appSecret, graphApiVersion } = config.meta;
     if (!appId || !appSecret) {
-      metaStatus = { status: 'error', reason: 'Meta app credentials not configured.' };
+      metaStatus = { status: 'error', reason: 'Meta app credentials not configured.', detail: null };
     } else {
       const appToken = `${appId}|${appSecret}`;
       const response = await fetch(
         `https://graph.facebook.com/${graphApiVersion}/app?access_token=${appToken}`,
       );
       if (response.ok) {
-        metaStatus = { status: 'active', reason: null };
+        const body = (await response.json()) as { name?: string; id?: string };
+        metaStatus = {
+          status: 'active',
+          reason: null,
+          detail: `App: ${body.name ?? 'Unknown'} (ID: ${body.id ?? appId}) · Graph API ${graphApiVersion}`,
+        };
       } else if (response.status === 401 || response.status === 400) {
-        metaStatus = { status: 'expired', reason: 'Meta app credentials invalid or expired.' };
+        metaStatus = { status: 'expired', reason: 'Meta app credentials invalid or expired.', detail: null };
       } else {
-        metaStatus = { status: 'error', reason: `Unexpected status: ${response.status}` };
+        metaStatus = { status: 'error', reason: `Unexpected status: ${response.status}`, detail: null };
       }
     }
   } catch (err) {
-    metaStatus = { status: 'error', reason: err instanceof Error ? err.message : 'Network error' };
+    metaStatus = { status: 'error', reason: err instanceof Error ? err.message : 'Network error', detail: null };
   }
 
-  // Check Paynow credentials
+  // ── Paynow ────────────────────────────────────────────────────────────────
   const paynowStatus: ApiKeyStatus['paynow'] =
     config.paynow.integrationId && config.paynow.integrationKey
-      ? { status: 'active', reason: null }
-      : { status: 'error', reason: 'Paynow integration credentials not configured.' };
+      ? {
+          status: 'active',
+          reason: null,
+          detail: `Integration ID: ${config.paynow.integrationId} · Result URL: ${config.paynow.resultUrl}`,
+        }
+      : { status: 'error', reason: 'Paynow integration credentials not configured.', detail: null };
 
-  return { meta: metaStatus, paynow: paynowStatus };
+  // ── Claude AI ─────────────────────────────────────────────────────────────
+  let claudeStatus: ApiKeyStatus['claude'];
+  try {
+    const { apiKey, model } = config.claude;
+    if (!apiKey) {
+      claudeStatus = { status: 'error', reason: 'Claude API key not configured.', detail: null };
+    } else {
+      // Lightweight check — list models endpoint to verify key validity
+      const response = await fetch('https://api.anthropic.com/v1/models', {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+      });
+      if (response.ok) {
+        claudeStatus = {
+          status: 'active',
+          reason: null,
+          detail: `Model: ${model} · Key prefix: ${apiKey.slice(0, 16)}…`,
+        };
+      } else if (response.status === 401) {
+        claudeStatus = { status: 'error', reason: 'Claude API key is invalid or revoked.', detail: null };
+      } else {
+        claudeStatus = { status: 'error', reason: `Anthropic API returned HTTP ${response.status}.`, detail: null };
+      }
+    }
+  } catch (err) {
+    claudeStatus = { status: 'error', reason: err instanceof Error ? err.message : 'Network error', detail: null };
+  }
+
+  return { meta: metaStatus, paynow: paynowStatus, claude: claudeStatus };
 }
 
 // ─── Support Ticket Management ────────────────────────────────────────────────
