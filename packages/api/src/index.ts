@@ -99,6 +99,7 @@ const start = async () => {
         // API calls from JS use fetch() which sends Accept: application/json.
         const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
           '/verify-email', '/reset-password', '/subscription'];
+        const indexHtmlPath = join(businessDist, 'index.html');
 
         app.addHook('onRequest', async (request, reply) => {
           const accept = request.headers['accept'] ?? '';
@@ -106,7 +107,9 @@ const start = async () => {
           const isBrowserNav = accept.includes('text/html') && request.method === 'GET';
           const isSpaPath = spaPrefixes.some((p) => path === p || path.startsWith(p + '/'));
           if (isBrowserNav && isSpaPath) {
-            reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
+            const { readFile } = await import('fs/promises');
+            const html = await readFile(indexHtmlPath);
+            reply.type('text/html').send(html);
           }
         });
 
