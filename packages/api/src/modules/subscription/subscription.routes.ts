@@ -146,23 +146,41 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
     const businessId = request.businessId;
     const { paynowReference, pollUrl, tier } = request.body as {
       paynowReference: string;
-      pollUrl: string;
+      pollUrl?: string;
       tier: string;
     };
 
-    if (!paynowReference || !pollUrl || !tier) {
-      return reply.status(400).send({ error: 'paynowReference, pollUrl, and tier are required.' });
+    if (!paynowReference || !tier) {
+      return reply.status(400).send({ error: 'paynowReference and tier are required.' });
     }
 
     if (!isValidTier(tier)) {
       return reply.status(400).send({ error: 'Invalid tier.' });
     }
 
+    // Resolve poll URL — use provided one or fall back to stored record
+    let resolvedPollUrl = pollUrl ?? '';
+    if (!resolvedPollUrl) {
+      const stored = await pool.query<{ poll_url: string | null }>(
+        `SELECT poll_url FROM subscription_payments WHERE paynow_reference = $1 AND business_id = $2 LIMIT 1`,
+        [paynowReference, businessId],
+      );
+      resolvedPollUrl = stored.rows[0]?.poll_url ?? '';
+    }
+
+    if (!resolvedPollUrl) {
+      return reply.status(400).send({ error: 'No poll URL available for this payment.' });
+    }
+
     try {
-      const result = await pollSubscriptionPaymentStatus(pollUrl);
+      const result = await pollSubscriptionPaymentStatus(resolvedPollUrl);
 
       if (result.status === 'paid') {
         await activateSubscription(businessId, tier, result.paynowReference ?? paynowReference);
+        await pool.query(
+          `UPDATE subscription_payments SET status = 'paid', updated_at = NOW() WHERE paynow_reference = $1`,
+          [result.paynowReference ?? paynowReference],
+        );
         return reply.send({ status: 'paid' });
       }
 

@@ -200,6 +200,7 @@ export async function processSubscriptionRenewals(
       sub.email,
       sub.priceUsd,
       `Augustus ${sub.plan} subscription renewal`,
+      sub.plan,
     );
 
     if (!result.success) {

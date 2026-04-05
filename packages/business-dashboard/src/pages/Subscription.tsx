@@ -37,9 +37,6 @@ export default function Subscription() {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
-  const [pendingRef, setPendingRef] = useState<string | null>(null);
-  const [pendingPollUrl, setPendingPollUrl] = useState<string | null>(null);
-  const [pendingTier, setPendingTier] = useState<string | null>(null);
 
   const loadSub = () =>
     apiFetch<SubscriptionInfo>('/dashboard/subscription')
@@ -68,13 +65,8 @@ export default function Subscription() {
     const pollUrl = params.get('poll_url');
     const tier = params.get('tier');
     if (ref && tier) {
-      setPendingRef(ref);
-      setPendingTier(tier);
-      if (pollUrl) setPendingPollUrl(pollUrl);
       setMsg('Payment initiated. Checking status…');
-      // Clean URL
       window.history.replaceState({}, '', window.location.pathname);
-      // Start polling — use poll_url if available, otherwise backend will poll by reference
       pollForPayment(ref, pollUrl ?? '', tier);
     }
   }, []);
@@ -95,12 +87,9 @@ export default function Subscription() {
         if (result.status === 'paid') {
           setMsg('Payment confirmed! Subscription activated.');
           setPolling(false);
-          setPendingRef(null);
-          setPendingPollUrl(null);
-          setPendingTier(null);
           await loadSub();
           return;
-        } else if (result.status === 'failed' || result.status === 'cancelled') {
+        } else if (result.status === 'failed') {
           setError('Payment failed or was cancelled. Please try again.');
           setPolling(false);
           return;
