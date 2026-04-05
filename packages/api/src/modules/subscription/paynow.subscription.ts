@@ -6,6 +6,7 @@
 
 import { createHash } from 'crypto';
 import { config } from '../../config.js';
+import { pool } from '../../db/client.js';
 import { activateSubscription, handleFailedRenewalPayment } from './subscription.service.js';
 import type { PlanTier } from './plans.js';
 
@@ -16,6 +17,7 @@ export interface PaynowChargeResult {
   paynowReference: string | null;
   pollUrl: string | null;
   paymentUrl: string | null;
+  returnUrl?: string;
   error?: string;
 }
 
@@ -29,23 +31,27 @@ export interface PaynowStatusResult {
 /**
  * Initiate a subscription charge via Paynow.
  * Returns a redirect URL, poll URL and reference for status tracking.
+ * Stores a subscription_payments record so the webhook can resolve businessId + tier.
  */
 export async function initiateSubscriptionCharge(
   businessId: string,
   email: string,
   amountUsd: number,
   description: string,
+  tier: PlanTier,
 ): Promise<PaynowChargeResult> {
   if (!config.paynow.integrationId || !config.paynow.integrationKey) {
     return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: 'Paynow integration not configured.' };
   }
 
   const reference = `SUB-${businessId.slice(0, 8)}-${Date.now()}`;
-  const returnUrl = config.paynow.returnUrl;
   const resultUrl = config.paynow.resultUrl;
 
+  // Build return URL with tier embedded so the frontend can resume polling on return
+  const baseReturnUrl = config.paynow.returnUrl;
+  const returnUrl = `${baseReturnUrl}?tier=${encodeURIComponent(tier)}&paynow_ref=${encodeURIComponent(reference)}`;
+
   // Build fields in exact order Paynow expects
-  // authemail must match the merchant's registered Paynow email in test mode
   const authEmail = process.env.PAYNOW_MERCHANT_EMAIL || email;
   const fields: Record<string, string> = {
     id: config.paynow.integrationId,
@@ -58,8 +64,6 @@ export async function initiateSubscriptionCharge(
     authemail: authEmail,
   };
 
-  // Hash: SHA512 of ALL fields (in POST order, excluding hash) + integration key
-  // Per Paynow PHP SDK: iterate all values except 'hash' and concatenate
   const hashInput = config.paynow.integrationId + reference + amountUsd.toFixed(2) + description + returnUrl + resultUrl + 'Message' + authEmail + config.paynow.integrationKey;
   const hash = createHash('sha512').update(hashInput, 'utf8').digest('hex').toUpperCase();
 
@@ -79,11 +83,28 @@ export async function initiateSubscriptionCharge(
       return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: parsed['error'] ?? 'Paynow initiation failed.' };
     }
 
+    const paynowReference = parsed['paynowreference'] ?? reference;
+    const pollUrl = parsed['pollurl'] ?? null;
+
+    // Store payment record so webhook can resolve businessId + tier
+    await pool.query(
+      `INSERT INTO subscription_payments (business_id, tier, paynow_reference, poll_url, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       ON CONFLICT (paynow_reference) DO NOTHING`,
+      [businessId, tier, paynowReference, pollUrl],
+    );
+
+    // Build final return URL with poll_url appended now that we have it
+    const finalReturnUrl = pollUrl
+      ? `${baseReturnUrl}?tier=${encodeURIComponent(tier)}&paynow_ref=${encodeURIComponent(paynowReference)}&poll_url=${encodeURIComponent(pollUrl)}`
+      : `${baseReturnUrl}?tier=${encodeURIComponent(tier)}&paynow_ref=${encodeURIComponent(paynowReference)}`;
+
     return {
       success: true,
-      paynowReference: parsed['paynowreference'] ?? reference,
-      pollUrl: parsed['pollurl'] ?? null,
+      paynowReference,
+      pollUrl,
       paymentUrl: parsed['browserurl'] ?? null,
+      returnUrl: finalReturnUrl,
     };
   } catch (err) {
     return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: err instanceof Error ? err.message : 'Network error.' };
@@ -114,29 +135,50 @@ export async function pollSubscriptionPaymentStatus(
 
 /**
  * Handle an inbound Paynow subscription payment status webhook.
- * Wires confirmed payment → activateSubscription, failed → handleFailedRenewalPayment.
+ * Looks up businessId + tier from subscription_payments table using the paynowreference.
  */
 export async function handleSubscriptionPaymentWebhook(payload: {
   reference: string;
   status: string;
   paynowReference: string;
-  businessId: string;
-  tier: PlanTier;
+  businessId?: string;
+  tier?: PlanTier;
   subscriptionId?: string;
 }): Promise<void> {
-  const { reference, status, paynowReference, businessId, tier, subscriptionId } = payload;
-  void reference;
+  const { status, paynowReference, subscriptionId } = payload;
+
+  // Look up businessId + tier from stored payment record
+  let businessId = payload.businessId;
+  let tier = payload.tier;
+
+  if (paynowReference && (!businessId || !tier)) {
+    const result = await pool.query<{ business_id: string; tier: string }>(
+      `SELECT business_id, tier FROM subscription_payments WHERE paynow_reference = $1 LIMIT 1`,
+      [paynowReference],
+    );
+    if (result.rows.length > 0) {
+      businessId = result.rows[0].business_id;
+      tier = result.rows[0].tier as PlanTier;
+    }
+  }
+
+  if (!businessId || !tier) return; // can't process without these
 
   if (status === 'Paid' || status === 'paid') {
-    // Wire to subscription activation (Task 3.2)
     await activateSubscription(businessId, tier, paynowReference);
+    await pool.query(
+      `UPDATE subscription_payments SET status = 'paid', updated_at = NOW() WHERE paynow_reference = $1`,
+      [paynowReference],
+    );
   } else if (status === 'Failed' || status === 'Cancelled' || status === 'cancelled') {
-    // Wire to failed payment retry logic (Task 3.4)
+    await pool.query(
+      `UPDATE subscription_payments SET status = 'failed', updated_at = NOW() WHERE paynow_reference = $1`,
+      [paynowReference],
+    );
     if (subscriptionId) {
       await handleFailedRenewalPayment(subscriptionId);
     }
   }
-  // 'Awaiting' / 'Sent' — no action, wait for next webhook or poll
 }
 
 // ─── Renewal billing job ──────────────────────────────────────────────────────

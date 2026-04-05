@@ -122,6 +122,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
         email,
         plan.priceUsd,
         `Augustus ${plan.displayName} subscription`,
+        tier,
       );
 
       if (!result.success) {
@@ -132,6 +133,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
         paymentUrl: result.paymentUrl,
         paynowReference: result.paynowReference,
         pollUrl: result.pollUrl,
+        returnUrl: result.returnUrl,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Payment initiation failed.';
@@ -180,9 +182,6 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
         reference: body.reference ?? '',
         status: body.status ?? '',
         paynowReference: body.paynowreference ?? '',
-        businessId: body.businessId ?? '',
-        tier: (body.tier as 'silver' | 'gold' | 'platinum') ?? 'silver',
-        subscriptionId: body.subscriptionId,
       });
       return reply.send({ ok: true });
     } catch (err) {

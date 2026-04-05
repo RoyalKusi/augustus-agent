@@ -67,15 +67,15 @@ export default function Subscription() {
     const ref = params.get('paynow_ref');
     const pollUrl = params.get('poll_url');
     const tier = params.get('tier');
-    if (ref && pollUrl && tier) {
+    if (ref && tier) {
       setPendingRef(ref);
-      setPendingPollUrl(pollUrl);
       setPendingTier(tier);
+      if (pollUrl) setPendingPollUrl(pollUrl);
       setMsg('Payment initiated. Checking status…');
       // Clean URL
       window.history.replaceState({}, '', window.location.pathname);
-      // Start polling
-      pollForPayment(ref, pollUrl, tier);
+      // Start polling — use poll_url if available, otherwise backend will poll by reference
+      pollForPayment(ref, pollUrl ?? '', tier);
     }
   }, []);
 
