@@ -585,7 +585,7 @@ export async function approveWithdrawal(
 export async function getBusinessDashboardView(businessId: string): Promise<Record<string, unknown>> {
   const TIER_CAPS: Record<string, number> = { silver: 5, gold: 15, platinum: 50 };
 
-  const [subResult, usageResult, overrideResult, convResult, ordersResult] = await Promise.all([
+  const [subResult, usageResult, overrideResult, convResult, ordersResult, waResult] = await Promise.all([
     pool.query<{ plan: string; status: string; price_usd: string; renewal_date: string | null }>(
       `SELECT s.plan, s.status, s.price_usd, s.renewal_date
        FROM subscriptions s
@@ -614,6 +614,11 @@ export async function getBusinessDashboardView(businessId: string): Promise<Reco
        FROM orders WHERE business_id = $1`,
       [businessId],
     ),
+    pool.query<{ status: string; display_phone_number: string | null; verified_name: string | null; waba_id: string }>(
+      `SELECT status, display_phone_number, verified_name, waba_id
+       FROM whatsapp_integrations WHERE business_id = $1 LIMIT 1`,
+      [businessId],
+    ),
   ]);
 
   const sub = subResult.rows[0] ?? null;
@@ -622,6 +627,7 @@ export async function getBusinessDashboardView(businessId: string): Promise<Reco
   const tierCap = sub ? (TIER_CAPS[sub.plan] ?? 0) : 0;
   const monthlyCost = usage ? Number(usage.accumulated_cost_usd) : 0;
   const utilisationPct = tierCap > 0 ? (monthlyCost / tierCap) * 100 : 0;
+  const wa = waResult.rows[0] ?? null;
 
   return {
     subscription: sub
@@ -647,6 +653,14 @@ export async function getBusinessDashboardView(businessId: string): Promise<Reco
       pending: Number(ordersResult.rows[0]?.pending_orders ?? 0),
       totalRevenue: Number(ordersResult.rows[0]?.total_revenue ?? 0),
     },
+    whatsapp: wa
+      ? {
+          status: wa.status,
+          displayPhoneNumber: wa.display_phone_number ?? null,
+          verifiedName: wa.verified_name ?? null,
+          wabaId: wa.waba_id,
+        }
+      : null,
   };
 }
 

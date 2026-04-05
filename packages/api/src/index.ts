@@ -79,9 +79,12 @@ const start = async () => {
           decorateReply: true,
           wildcard: false,
         });
-        app.get('/admin-app', (_req, reply) => {
+        // Serve index.html for /admin-app and any deep path (SPA client-side routing)
+        const serveAdminIndex = (_req: unknown, reply: { type: (t: string) => { send: (s: unknown) => void } }) => {
           reply.type('text/html').send(createReadStream(join(adminDist, 'index.html')));
-        });
+        };
+        app.get('/admin-app', serveAdminIndex);
+        app.get('/admin-app/*', serveAdminIndex);
       }
 
       if (existsSync(businessDist)) {

@@ -85,6 +85,7 @@ export default function WhatsAppSetup() {
     if (!window.FB) { setError('Facebook SDK not loaded. Please refresh and try again.'); return; }
     if (!sdkConfig) { setError('WhatsApp config not loaded. Please refresh and try again.'); return; }
     setError(''); setMsg('');
+    const returnUrl = `${window.location.origin}${window.location.pathname}`;
     window.FB.login((response) => {
       const code = response.authResponse?.code;
       if (!code) { if (response.status !== 'unknown') setError('Connection was cancelled or failed.'); return; }
@@ -103,7 +104,7 @@ export default function WhatsAppSetup() {
       config_id: sdkConfig.configId,
       response_type: 'code',
       override_default_response_type: true,
-      extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding', sessionInfoVersion: '3' },
+      extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding', sessionInfoVersion: '3', return_url: returnUrl },
     });
   };
 

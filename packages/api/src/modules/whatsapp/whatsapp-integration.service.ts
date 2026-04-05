@@ -18,6 +18,8 @@ export interface WhatsAppIntegration {
   webhookVerifyToken: string;
   status: 'active' | 'inactive' | 'error';
   errorMessage: string | null;
+  displayPhoneNumber?: string;
+  verifiedName?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +33,8 @@ interface IntegrationRow {
   webhook_verify_token: string;
   status: 'active' | 'inactive' | 'error';
   error_message: string | null;
+  display_phone_number: string | null;
+  verified_name: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -45,6 +49,8 @@ function rowToIntegration(row: IntegrationRow): WhatsAppIntegration {
     webhookVerifyToken: row.webhook_verify_token,
     status: row.status,
     errorMessage: row.error_message,
+    displayPhoneNumber: row.display_phone_number ?? undefined,
+    verifiedName: row.verified_name ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -60,13 +66,15 @@ export async function storeCredentials(
   phoneNumberId: string,
   accessToken: string,
   webhookVerifyToken: string,
+  displayPhoneNumber?: string,
+  verifiedName?: string,
 ): Promise<WhatsAppIntegration> {
   const encryptedToken = encrypt(accessToken);
 
   const result = await pool.query<IntegrationRow>(
     `INSERT INTO whatsapp_integrations
-       (business_id, waba_id, phone_number_id, access_token_encrypted, webhook_verify_token, status)
-     VALUES ($1, $2, $3, $4, $5, 'inactive')
+       (business_id, waba_id, phone_number_id, access_token_encrypted, webhook_verify_token, status, display_phone_number, verified_name)
+     VALUES ($1, $2, $3, $4, $5, 'inactive', $6, $7)
      ON CONFLICT (business_id) DO UPDATE SET
        waba_id               = EXCLUDED.waba_id,
        phone_number_id       = EXCLUDED.phone_number_id,
@@ -74,9 +82,11 @@ export async function storeCredentials(
        webhook_verify_token  = EXCLUDED.webhook_verify_token,
        status                = 'inactive',
        error_message         = NULL,
+       display_phone_number  = COALESCE(EXCLUDED.display_phone_number, whatsapp_integrations.display_phone_number),
+       verified_name         = COALESCE(EXCLUDED.verified_name, whatsapp_integrations.verified_name),
        updated_at            = NOW()
      RETURNING *`,
-    [businessId, wabaId, phoneNumberId, encryptedToken, webhookVerifyToken],
+    [businessId, wabaId, phoneNumberId, encryptedToken, webhookVerifyToken, displayPhoneNumber ?? null, verifiedName ?? null],
   );
 
   return rowToIntegration(result.rows[0]);
@@ -198,8 +208,7 @@ export async function registerWebhook(businessId: string): Promise<RegisterWebho
     return { success: false, errorMessage: 'No WhatsApp integration found for this business.' };
   }
 
-  const { wabaId, accessToken, webhookVerifyToken } = integration;
-  const callbackUrl = `${process.env.BASE_URL ?? config.baseUrl}/webhooks/whatsapp/${businessId}`;
+  const { wabaId, accessToken } = integration;
   const graphVersion = process.env.META_GRAPH_API_VERSION ?? config.meta.graphApiVersion;
   const url = `https://graph.facebook.com/${graphVersion}/${wabaId}/subscribed_apps`;
 
@@ -211,10 +220,7 @@ export async function registerWebhook(businessId: string): Promise<RegisterWebho
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        callback_url: callbackUrl,
-        verify_token: webhookVerifyToken,
-      }),
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(30_000), // Req 4.2: 30-second limit
     });
   } catch (err: unknown) {
@@ -432,6 +438,8 @@ export async function exchangeEmbeddedSignupCode(
     phone.id,
     access_token,
     config.meta.verifyToken,
+    phone.display_phone_number,
+    phone.verified_name,
   );
 
   // Step 5: Register webhook

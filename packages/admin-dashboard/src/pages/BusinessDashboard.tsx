@@ -22,6 +22,12 @@ interface BusinessDashboardData {
     pending: number;
     totalRevenue: number;
   };
+  whatsapp?: {
+    status: string;
+    displayPhoneNumber: string | null;
+    verifiedName: string | null;
+    wabaId: string;
+  } | null;
 }
 
 export default function BusinessDashboard() {
@@ -59,17 +65,17 @@ export default function BusinessDashboard() {
             <Section title="Subscription">
               <Row label="Tier" value={data.subscription.tier} />
               <Row label="Status" value={data.subscription.status} />
-              <Row label="Price" value={`$${data.subscription.priceUsd.toFixed(2)}/mo`} />
+              <Row label="Price" value={`${data.subscription.priceUsd.toFixed(2)}/mo`} />
               <Row label="Current Period End" value={new Date(data.subscription.currentPeriodEnd).toLocaleDateString()} />
             </Section>
           )}
 
           {data.tokenUsage && (
             <Section title="Token Usage">
-              <Row label="Monthly Cost" value={`$${data.tokenUsage.monthlyCostUsd.toFixed(4)}`} />
-              <Row label="Tier Cap" value={`$${data.tokenUsage.tierCapUsd.toFixed(2)}`} />
+              <Row label="Monthly Cost" value={`${data.tokenUsage.monthlyCostUsd.toFixed(4)}`} />
+              <Row label="Tier Cap" value={`${data.tokenUsage.tierCapUsd.toFixed(2)}`} />
               {data.tokenUsage.hardLimitOverrideUsd != null && (
-                <Row label="Hard Limit Override" value={`$${data.tokenUsage.hardLimitOverrideUsd.toFixed(2)}`} />
+                <Row label="Hard Limit Override" value={`${data.tokenUsage.hardLimitOverrideUsd.toFixed(2)}`} />
               )}
               <Row label="Utilisation" value={`${data.tokenUsage.utilisationPct.toFixed(1)}%`} />
             </Section>
@@ -86,9 +92,22 @@ export default function BusinessDashboard() {
               <Row label="Total Orders" value={String(data.orders.total)} />
               <Row label="Completed" value={String(data.orders.completed)} />
               <Row label="Pending" value={String(data.orders.pending)} />
-              <Row label="Total Revenue" value={`$${data.orders.totalRevenue.toFixed(2)}`} />
+              <Row label="Total Revenue" value={`${data.orders.totalRevenue.toFixed(2)}`} />
             </Section>
           )}
+
+          <Section title="WhatsApp Integration">
+            {data.whatsapp ? (
+              <>
+                <Row label="Status" value={data.whatsapp.status} />
+                <Row label="Phone Number" value={data.whatsapp.displayPhoneNumber ?? '—'} />
+                <Row label="Business Name" value={data.whatsapp.verifiedName ?? '—'} />
+                <Row label="WABA ID" value={data.whatsapp.wabaId} />
+              </>
+            ) : (
+              <p style={{ margin: 0, fontSize: 14, color: '#718096' }}>Not connected</p>
+            )}
+          </Section>
         </div>
       )}
     </div>
