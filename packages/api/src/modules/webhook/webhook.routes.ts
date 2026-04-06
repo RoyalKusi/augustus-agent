@@ -19,9 +19,6 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post(
     '/webhooks/whatsapp',
-    {
-      config: { rawBody: true },
-    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
 
@@ -94,9 +91,6 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post(
     '/webhooks/whatsapp/:businessId',
-    {
-      config: { rawBody: true },
-    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { businessId } = request.params as { businessId: string };
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
