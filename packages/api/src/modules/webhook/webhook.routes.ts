@@ -55,8 +55,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           const phoneNumberId = extractPhoneNumberId(payload);
           const messageId = extractMessageId(payload);
 
+          app.log.info({ phoneNumberId, messageId }, '[Webhook] Processing global webhook');
+
           if (!phoneNumberId) {
-            app.log.info('Webhook received with no phone_number_id — skipping');
+            app.log.info('[Webhook] No phone_number_id — skipping');
             return;
           }
 
@@ -67,22 +69,25 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           );
           const businessId = result.rows[0]?.business_id;
 
+          app.log.info({ businessId, phoneNumberId }, '[Webhook] Business lookup result');
+
           if (!businessId) {
-            app.log.warn({ phoneNumberId }, 'No business found for phone_number_id — skipping');
+            app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id — skipping');
             return;
           }
 
           if (messageId) {
             const duplicate = await isDuplicate(messageId);
             if (duplicate) {
-              app.log.info({ businessId, messageId }, 'Duplicate webhook message — skipping enqueue');
+              app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping enqueue');
               return;
             }
           }
 
           await enqueueWebhookPayload(businessId, payload);
+          app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
         } catch (err) {
-          app.log.error({ err }, 'Failed to process global webhook event');
+          app.log.error({ err }, '[Webhook] Failed to process global webhook event');
         }
       })();
     },
