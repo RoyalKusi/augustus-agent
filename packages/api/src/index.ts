@@ -20,6 +20,8 @@ import { legalRoutes } from './routes/legal.js';
 import {
   startConversationEngineConsumer,
   stopConversationEngineConsumer,
+  consumerRunning,
+  CONSUMER_NAME,
 } from './modules/conversation/conversation-engine.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -53,6 +55,7 @@ const start = async () => {
     });
 
     app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
+    app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
 
     await app.register(authRoutes);
     await app.register(subscriptionRoutes);
