@@ -14,7 +14,7 @@ import type { WebhookEvent } from '../../queue/producer.js';
 export const CLAUDE_HAIKU_MODEL = (function() {
   const m = config.claude.model;
   if (m && m.trim()) return m.trim();
-  return 'claude-3-haiku-20240307';
+  return 'claude-haiku-4-5-20251001';
 })();
 
 export function filterContextWindow(messages, nowMs, maxMessages = MAX_CONTEXT_MESSAGES, windowMs = CONTEXT_WINDOW_MS) {
