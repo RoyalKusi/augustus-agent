@@ -410,6 +410,8 @@ async function runConsumerLoop(): Promise<void> {
     // group may already exist
   }
 
+  console.log('[ConversationEngine] Consumer loop started, entering main loop');
+
   while (consumerRunning) {
     try {
       // Reclaim any stale pending messages first (non-fatal if unsupported)
@@ -418,14 +420,18 @@ async function runConsumerLoop(): Promise<void> {
       } catch (pendingErr) {
         console.warn('[ConversationEngine] reprocessPendingEvents failed (non-fatal):', pendingErr);
       }
-      // Then consume new messages (blocks up to 5s)
-      await consumeWebhookEvents(GROUP_NAME, CONSUMER_NAME, handleWebhookEvent, { count: 10, blockMs: 5000 });
+      // Then consume new messages — use non-blocking poll for Upstash compatibility
+      await consumeWebhookEvents(GROUP_NAME, CONSUMER_NAME, handleWebhookEvent, { count: 10, blockMs: 0 });
+      // Small sleep between polls to avoid hammering Redis
+      if (consumerRunning) await new Promise((r) => setTimeout(r, 500));
     } catch (err) {
       console.error('[ConversationEngine] Consumer loop error:', err);
       // Brief pause before retrying to avoid tight error loops
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
+
+  console.log('[ConversationEngine] Consumer loop exited');
 }
 
 export function startConversationEngineConsumer(): void {
