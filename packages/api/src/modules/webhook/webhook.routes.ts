@@ -10,20 +10,6 @@ import {
 } from './webhook.service.js';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
-  // Capture raw body for HMAC validation using a scoped preParsing hook.
-  // This avoids conflicting with the global JSON body parser.
-  app.addHook('preParsing', async (request, _reply, payload) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of payload) {
-      chunks.push(chunk as Buffer);
-    }
-    const raw = Buffer.concat(chunks);
-    (request as unknown as { rawBody: Buffer }).rawBody = raw;
-    // Return a readable stream from the buffer for Fastify to continue parsing
-    const { Readable } = await import('stream');
-    return Readable.from(raw);
-  });
-
   /**
    * POST /webhooks/whatsapp
    *
@@ -33,11 +19,16 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post(
     '/webhooks/whatsapp',
+    {
+      config: { rawBody: true },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
-      const rawBody: Buffer =
-        (request as unknown as { rawBody: Buffer }).rawBody ??
-        Buffer.from(JSON.stringify(request.body ?? {}));
+
+      // Use raw body string for HMAC validation
+      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
+        ?? JSON.stringify(request.body ?? {});
+      const rawBody = Buffer.from(rawBodyStr);
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
@@ -100,16 +91,19 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
    * POST /webhooks/whatsapp/:businessId
    *
    * Per-business webhook endpoint (legacy / manual setup path).
-   * Receives inbound Meta Cloud API events.
    */
   app.post(
     '/webhooks/whatsapp/:businessId',
+    {
+      config: { rawBody: true },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { businessId } = request.params as { businessId: string };
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
-      const rawBody: Buffer =
-        (request as unknown as { rawBody: Buffer }).rawBody ??
-        Buffer.from(JSON.stringify(request.body ?? {}));
+
+      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
+        ?? JSON.stringify(request.body ?? {});
+      const rawBody = Buffer.from(rawBodyStr);
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
