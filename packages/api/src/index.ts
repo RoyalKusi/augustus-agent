@@ -117,8 +117,10 @@ const start = async () => {
         });
 
         // Catch-all fallback for any remaining unmatched routes
-        app.setNotFoundHandler((_req, reply) => {
-          reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
+        app.setNotFoundHandler(async (_req, reply) => {
+          const { readFile } = await import('fs/promises');
+          const html = await readFile(join(businessDist, 'index.html'));
+          reply.type('text/html').send(html);
         });
       }
     }

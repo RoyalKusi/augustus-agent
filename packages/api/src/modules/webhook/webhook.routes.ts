@@ -45,13 +45,16 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Invalid signature' });
       }
 
+      // Capture body reference before sending reply
+      const capturedBody = request.body;
+
       // Acknowledge immediately — Meta requires a response within 5 seconds
       reply.status(200).send();
 
       // Async processing: resolve businessId from phone_number_id, then enqueue
       void (async () => {
         try {
-          const payload = request.body;
+          const payload = capturedBody;
           const phoneNumberId = extractPhoneNumberId(payload);
           const messageId = extractMessageId(payload);
 
@@ -114,13 +117,16 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Invalid signature' });
       }
 
+      // Capture body before sending reply
+      const capturedBody = request.body;
+
       // Acknowledge immediately — Meta requires a response within 5 seconds
       reply.status(200).send();
 
       // Async processing: deduplication + enqueue (fire-and-forget)
       void (async () => {
         try {
-          const payload = request.body;
+          const payload = capturedBody;
           const messageId = extractMessageId(payload);
 
           if (messageId) {
