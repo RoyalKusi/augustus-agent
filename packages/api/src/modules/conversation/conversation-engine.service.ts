@@ -412,8 +412,12 @@ async function runConsumerLoop(): Promise<void> {
 
   while (consumerRunning) {
     try {
-      // Reclaim any stale pending messages first
-      await reprocessPendingEvents(GROUP_NAME, CONSUMER_NAME, handleWebhookEvent);
+      // Reclaim any stale pending messages first (non-fatal if unsupported)
+      try {
+        await reprocessPendingEvents(GROUP_NAME, CONSUMER_NAME, handleWebhookEvent);
+      } catch (pendingErr) {
+        console.warn('[ConversationEngine] reprocessPendingEvents failed (non-fatal):', pendingErr);
+      }
       // Then consume new messages (blocks up to 5s)
       await consumeWebhookEvents(GROUP_NAME, CONSUMER_NAME, handleWebhookEvent, { count: 10, blockMs: 5000 });
     } catch (err) {
