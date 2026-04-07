@@ -46,6 +46,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           const phoneNumberId = extractPhoneNumberId(payload);
           const messageId = extractMessageId(payload);
 
+          // Diagnostic: mark that async block ran
+          const diagKey = `webhook:diag:${Date.now()}`;
+          await import('../../redis/client.js').then(m => m.default.set(diagKey, JSON.stringify({ phoneNumberId, messageId, hasPayload: !!payload }), 'EX', 300));
+
           app.log.info({ phoneNumberId, messageId }, '[Webhook] Processing global webhook');
 
           if (!phoneNumberId) {
