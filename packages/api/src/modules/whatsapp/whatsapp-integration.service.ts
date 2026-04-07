@@ -208,26 +208,21 @@ export async function registerWebhook(businessId: string): Promise<RegisterWebho
     return { success: false, errorMessage: 'No WhatsApp integration found for this business.' };
   }
 
-  const { wabaId, accessToken, webhookVerifyToken } = integration;
+  const { wabaId, accessToken } = integration;
   const graphVersion = process.env.META_GRAPH_API_VERSION ?? config.meta.graphApiVersion;
-  const url = `https://graph.facebook.com/${graphVersion}/${wabaId}/subscribed_apps`;
 
-  // Build the global webhook callback URL — always points to the single /webhooks/whatsapp endpoint
-  const callbackUrl = `${config.baseUrl}/webhooks/whatsapp`;
-  const verifyToken = webhookVerifyToken || config.meta.verifyToken;
+  // Step 1: Subscribe the WABA to the app's webhook (subscribes to all fields)
+  const subscribeUrl = `https://graph.facebook.com/${graphVersion}/${wabaId}/subscribed_apps`;
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(subscribeUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        callback_url: callbackUrl,
-        verify_token: verifyToken,
-      }),
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(30_000), // Req 4.2: 30-second limit
     });
   } catch (err: unknown) {

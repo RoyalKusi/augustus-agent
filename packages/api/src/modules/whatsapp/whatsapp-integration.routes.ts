@@ -123,6 +123,15 @@ export async function whatsappIntegrationRoutes(app: FastifyInstance): Promise<v
     }
   });
 
+  // GET /integration/webhook-url — return the webhook URL to configure in Meta App Dashboard
+  app.get('/integration/webhook-url', async (_request, reply) => {
+    return reply.send({
+      webhookUrl: `${config.baseUrl}/webhooks/whatsapp`,
+      verifyToken: config.meta.verifyToken,
+      instructions: 'Configure these in Meta App Dashboard → WhatsApp → Configuration → Webhook',
+    });
+  });
+
   // GET /integration/embedded-signup-config — return public Meta config for the frontend SDK
   // No auth needed for the app ID (it's public), but we keep it behind the auth middleware
   // so only logged-in businesses can read it.
