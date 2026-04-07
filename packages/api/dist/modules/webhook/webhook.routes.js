@@ -11,9 +11,10 @@ export async function webhookRoutes(app) {
      */
     app.post('/webhooks/whatsapp', async (request, reply) => {
         const signature = request.headers['x-hub-signature-256'] ?? '';
-        // Compute HMAC from the parsed and re-serialized body
-        // Note: for Meta webhooks, use the exact raw bytes; for our test webhooks this is equivalent
-        const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
+        // Use raw body string for HMAC validation
+        const rawBodyStr = request.rawBody
+            ?? JSON.stringify(request.body ?? {});
+        const rawBody = Buffer.from(rawBodyStr);
         // Validate HMAC signature
         const secret = config.meta.appSecret;
         if (!validateHmacSignature(rawBody, signature, secret)) {
@@ -23,8 +24,8 @@ export async function webhookRoutes(app) {
         const capturedBody = request.body;
         // Acknowledge immediately — Meta requires a response within 5 seconds
         reply.status(200).send();
-        // Process synchronously after reply to avoid Fastify request lifecycle issues
-        setImmediate(async () => {
+        // Async processing: resolve businessId from phone_number_id, then enqueue
+        void (async () => {
             try {
                 const payload = capturedBody;
                 const phoneNumberId = extractPhoneNumberId(payload);
@@ -34,6 +35,7 @@ export async function webhookRoutes(app) {
                     app.log.info('[Webhook] No phone_number_id — skipping');
                     return;
                 }
+                // Look up businessId from phone_number_id
                 const result = await pool.query(`SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`, [phoneNumberId]);
                 const businessId = result.rows[0]?.business_id;
                 app.log.info({ businessId, phoneNumberId }, '[Webhook] Business lookup result');
@@ -54,7 +56,7 @@ export async function webhookRoutes(app) {
             catch (err) {
                 app.log.error({ err }, '[Webhook] Failed to process global webhook event');
             }
-        });
+        })();
     });
     /**
      * POST /webhooks/whatsapp/:businessId
@@ -64,7 +66,9 @@ export async function webhookRoutes(app) {
     app.post('/webhooks/whatsapp/:businessId', async (request, reply) => {
         const { businessId } = request.params;
         const signature = request.headers['x-hub-signature-256'] ?? '';
-        const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
+        const rawBodyStr = request.rawBody
+            ?? JSON.stringify(request.body ?? {});
+        const rawBody = Buffer.from(rawBodyStr);
         // Validate HMAC signature
         const secret = config.meta.appSecret;
         if (!validateHmacSignature(rawBody, signature, secret)) {

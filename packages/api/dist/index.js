@@ -26,9 +26,10 @@ process.on('unhandledRejection', (reason) => {
 const start = async () => {
     try {
         const app = Fastify({ logger: true });
-        // Allow empty JSON bodies globally
+        // Allow empty JSON bodies globally, and capture raw body string for HMAC validation
         app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
             const str = body ?? '';
+            _req.rawBody = str;
             if (!str.trim()) {
                 done(null, {});
                 return;
@@ -49,7 +50,7 @@ const start = async () => {
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         });
-        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '8.0' }));
+        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
         app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
         await app.register(authRoutes);
         await app.register(subscriptionRoutes);
@@ -87,8 +88,28 @@ const start = async () => {
                     decorateReply: false,
                     wildcard: false,
                 });
-                app.setNotFoundHandler((_req, reply) => {
-                    reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
+                // Intercept browser page navigations (Accept: text/html) on SPA paths
+                // before API route handlers can return JSON auth errors.
+                // API calls from JS use fetch() which sends Accept: application/json.
+                const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
+                    '/verify-email', '/reset-password', '/subscription'];
+                const indexHtmlPath = join(businessDist, 'index.html');
+                app.addHook('onRequest', async (request, reply) => {
+                    const accept = request.headers['accept'] ?? '';
+                    const path = request.url.split('?')[0];
+                    const isBrowserNav = accept.includes('text/html') && request.method === 'GET';
+                    const isSpaPath = spaPrefixes.some((p) => path === p || path.startsWith(p + '/'));
+                    if (isBrowserNav && isSpaPath) {
+                        const { readFile } = await import('fs/promises');
+                        const html = await readFile(indexHtmlPath);
+                        reply.type('text/html').send(html);
+                    }
+                });
+                // Catch-all fallback for any remaining unmatched routes
+                app.setNotFoundHandler(async (_req, reply) => {
+                    const { readFile } = await import('fs/promises');
+                    const html = await readFile(join(businessDist, 'index.html'));
+                    reply.type('text/html').send(html);
                 });
             }
         }

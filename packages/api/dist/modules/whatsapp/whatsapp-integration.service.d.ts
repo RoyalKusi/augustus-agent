@@ -52,14 +52,6 @@ export interface DeregisterWebhookResult {
     errorMessage?: string;
 }
 /**
- * Register a phone number for Cloud API messaging.
- * Required after embedded signup — without this Meta returns #133010.
- */
-export declare function registerPhoneNumber(businessId: string): Promise<{
-    success: boolean;
-    errorMessage?: string;
-}>;
-/**
  * Register a webhook subscription with the Meta Cloud API for the given business.
  *
  * Sequence:
