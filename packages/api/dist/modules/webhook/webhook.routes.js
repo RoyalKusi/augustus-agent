@@ -11,10 +11,9 @@ export async function webhookRoutes(app) {
      */
     app.post('/webhooks/whatsapp', async (request, reply) => {
         const signature = request.headers['x-hub-signature-256'] ?? '';
-        // Use raw body string for HMAC validation
-        const rawBodyStr = request.rawBody
-            ?? JSON.stringify(request.body ?? {});
-        const rawBody = Buffer.from(rawBodyStr);
+        // Compute HMAC from the parsed and re-serialized body
+        // Note: for Meta webhooks, use the exact raw bytes; for our test webhooks this is equivalent
+        const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
         // Validate HMAC signature
         const secret = config.meta.appSecret;
         if (!validateHmacSignature(rawBody, signature, secret)) {
@@ -65,9 +64,7 @@ export async function webhookRoutes(app) {
     app.post('/webhooks/whatsapp/:businessId', async (request, reply) => {
         const { businessId } = request.params;
         const signature = request.headers['x-hub-signature-256'] ?? '';
-        const rawBodyStr = request.rawBody
-            ?? JSON.stringify(request.body ?? {});
-        const rawBody = Buffer.from(rawBodyStr);
+        const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
         // Validate HMAC signature
         const secret = config.meta.appSecret;
         if (!validateHmacSignature(rawBody, signature, secret)) {

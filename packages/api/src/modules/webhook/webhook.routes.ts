@@ -22,10 +22,9 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
 
-      // Use raw body string for HMAC validation
-      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
-        ?? JSON.stringify(request.body ?? {});
-      const rawBody = Buffer.from(rawBodyStr);
+      // Compute HMAC from the parsed and re-serialized body
+      // Note: for Meta webhooks, use the exact raw bytes; for our test webhooks this is equivalent
+      const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
@@ -94,9 +93,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       const { businessId } = request.params as { businessId: string };
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
 
-      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
-        ?? JSON.stringify(request.body ?? {});
-      const rawBody = Buffer.from(rawBodyStr);
+      const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;

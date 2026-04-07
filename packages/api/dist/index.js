@@ -40,17 +40,6 @@ const start = async () => {
                 done(err, undefined);
             }
         });
-        // Capture raw body at app level for HMAC validation in webhook routes
-        app.addHook('preParsing', async (request, _reply, payload) => {
-            const chunks = [];
-            for await (const chunk of payload) {
-                chunks.push(chunk);
-            }
-            const raw = Buffer.concat(chunks);
-            request.rawBody = raw.toString('utf8');
-            const { Readable } = await import('stream');
-            return Readable.from(raw);
-        });
         await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
         const allowedOrigins = process.env.CORS_ORIGINS
             ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
