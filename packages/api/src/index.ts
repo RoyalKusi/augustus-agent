@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { existsSync, createReadStream } from 'fs';
 import { runMigrations } from './db/client.js';
 import { authRoutes } from './modules/auth/index.js';
 import { subscriptionRoutes } from './modules/subscription/index.js';
@@ -35,10 +35,9 @@ const start = async () => {
   try {
     const app = Fastify({ logger: true });
 
-    // Allow empty JSON bodies globally, and capture raw body string for HMAC validation
+    // Allow empty JSON bodies globally
     app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
       const str = (body as string) ?? '';
-      (_req as unknown as { rawBody: string }).rawBody = str;
       if (!str.trim()) { done(null, {}); return; }
       try { done(null, JSON.parse(str)); } catch (err) { done(err as Error, undefined); }
     });
@@ -83,10 +82,8 @@ const start = async () => {
           decorateReply: true,
           wildcard: false,
         });
-        const { readFile } = await import('fs/promises');
-        const adminHtml = await readFile(join(adminDist, 'index.html'));
         const serveAdminIndex = (_req: unknown, reply: { type: (t: string) => { send: (s: unknown) => void } }) => {
-          reply.type('text/html').send(adminHtml);
+          reply.type('text/html').send(createReadStream(join(adminDist, 'index.html')));
         };
         app.get('/admin-app', serveAdminIndex);
         app.get('/admin-app/*', serveAdminIndex);
@@ -119,11 +116,14 @@ const start = async () => {
           }
         });
 
-        // Catch-all fallback for any remaining unmatched routes
-        app.setNotFoundHandler(async (_req, reply) => {
-          const { readFile } = await import('fs/promises');
-          const html = await readFile(join(businessDist, 'index.html'));
-          reply.type('text/html').send(html);
+        // Catch-all fallback — only serve index.html for GET requests (browser navigation)
+        // POST/PUT/PATCH/DELETE should never be caught here — they're API routes
+        app.setNotFoundHandler((req, reply) => {
+          if (req.method === 'GET') {
+            reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
+          } else {
+            reply.status(404).send({ error: 'Not found' });
+          }
         });
       }
     }
