@@ -49,7 +49,7 @@ const start = async () => {
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         });
-        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '5.0' }));
+        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '6.0' }));
         app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
         await app.register(authRoutes);
         await app.register(subscriptionRoutes);
@@ -81,13 +81,26 @@ const start = async () => {
                 app.get('/admin-app/*', serveAdminIndex);
             }
             if (existsSync(businessDist)) {
+                // Serve static assets (JS, CSS, images) under /assets/ prefix
+                // This avoids the staticPlugin intercepting API routes
                 await app.register(staticPlugin, {
                     root: businessDist,
-                    prefix: '/',
+                    prefix: '/assets/',
                     decorateReply: false,
                     wildcard: false,
                 });
-                // Catch-all fallback for any remaining unmatched routes — serves SPA index.html
+                // Serve index.html for all known SPA routes
+                const serveIndex = async (_req, reply) => {
+                    const { readFile } = await import('fs/promises');
+                    const html = await readFile(join(businessDist, 'index.html'));
+                    reply.type('text/html').send(html);
+                };
+                const spaRoutes = ['/', '/login', '/register', '/forgot-password', '/verify-email',
+                    '/reset-password', '/subscription', '/dashboard', '/dashboard/*'];
+                for (const route of spaRoutes) {
+                    app.get(route, serveIndex);
+                }
+                // Catch-all fallback
                 app.setNotFoundHandler(async (_req, reply) => {
                     const { readFile } = await import('fs/promises');
                     const html = await readFile(join(businessDist, 'index.html'));
