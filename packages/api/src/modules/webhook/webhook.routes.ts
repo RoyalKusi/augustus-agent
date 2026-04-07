@@ -25,6 +25,25 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * POST /webhooks/test — diagnostic: verify body parsing and phone_number_id extraction
+   */
+  app.post('/webhooks/test', async (request, reply) => {
+    const body = request.body;
+    const phoneId = extractPhoneNumberId(body);
+    const msgId = extractMessageId(body);
+    const dbResult = phoneId
+      ? await pool.query<{ business_id: string }>('SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1', [phoneId])
+      : { rows: [] };
+    return reply.send({
+      bodyType: typeof body,
+      hasEntry: !!(body as Record<string,unknown>)?.entry,
+      phoneId,
+      msgId,
+      businessId: dbResult.rows[0]?.business_id ?? null,
+    });
+  });
+
+  /**
    * POST /webhooks/whatsapp
    *
    * Global Meta Cloud API webhook endpoint.
