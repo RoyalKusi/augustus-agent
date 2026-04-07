@@ -11,7 +11,7 @@ import {
   sendLockoutEmail,
 } from '../../services/notification.stub.js';
 
-const BCRYPT_COST = 10;
+const BCRYPT_COST = 12;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 const EMAIL_VERIFY_TTL = 86400; // 24 hours in seconds
@@ -136,8 +136,8 @@ export async function login(
 
   // Use a constant-time path to avoid user enumeration
   if (!business) {
-    // Still run bcrypt to prevent timing attacks (use cost 10 for performance on limited CPU)
-    await bcrypt.compare(password, '$2b$10$invalidhashpadding0000000000000000000000000000000000000');
+    // Still run bcrypt to prevent timing attacks
+    await bcrypt.compare(password, '$2b$12$invalidhashpadding000000000000000000000000000000000000');
     throw new Error('Invalid email or password.');
   }
 
@@ -177,8 +177,10 @@ export async function login(
     { expiresIn: '24h' },
   );
 
-  // Store session in Redis
-  await setSession(token, { businessId: business.id, email }, 86400);
+  // Store session in Redis (fire-and-forget — JWT is source of truth)
+  setSession(token, { businessId: business.id, email }, 86400).catch((err) => {
+    console.warn('[Auth] Failed to store session in Redis (non-fatal):', err?.message);
+  });
 
   return { token, expiresAt };
 }
