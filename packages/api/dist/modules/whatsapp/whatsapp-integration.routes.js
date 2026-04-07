@@ -1,4 +1,4 @@
-import { storeCredentials, getCredentials, updateCredentials, deleteCredentials, registerWebhook, deregisterWebhook, exchangeEmbeddedSignupCode, } from './whatsapp-integration.service.js';
+import { storeCredentials, getCredentials, updateCredentials, deleteCredentials, registerWebhook, deregisterWebhook, exchangeEmbeddedSignupCode, registerPhoneNumber, } from './whatsapp-integration.service.js';
 import { config } from '../../config.js';
 import { authenticate } from '../../auth/middleware.js';
 export async function whatsappIntegrationRoutes(app) {
@@ -68,6 +68,8 @@ export async function whatsappIntegrationRoutes(app) {
     app.post('/integration/register-webhook', async (request, reply) => {
         const businessId = request.businessId;
         try {
+            // First ensure phone number is registered for Cloud API
+            await registerPhoneNumber(businessId);
             const result = await registerWebhook(businessId);
             if (!result.success) {
                 return reply.status(502).send({ error: result.errorMessage });
@@ -76,6 +78,21 @@ export async function whatsappIntegrationRoutes(app) {
         }
         catch (err) {
             const message = err instanceof Error ? err.message : 'Webhook registration failed.';
+            return reply.status(500).send({ error: message });
+        }
+    });
+    // POST /integration/register-phone — register phone number for Cloud API messaging
+    app.post('/integration/register-phone', async (request, reply) => {
+        const businessId = request.businessId;
+        try {
+            const result = await registerPhoneNumber(businessId);
+            if (!result.success) {
+                return reply.status(502).send({ error: result.errorMessage });
+            }
+            return reply.send({ status: 'registered' });
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : 'Phone registration failed.';
             return reply.status(500).send({ error: message });
         }
     });

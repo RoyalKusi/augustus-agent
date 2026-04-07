@@ -188,6 +188,39 @@ export interface DeregisterWebhookResult {
 }
 
 /**
+ * Register a phone number for Cloud API messaging.
+ * Required after embedded signup — without this Meta returns #133010.
+ */
+export async function registerPhoneNumber(businessId: string): Promise<{ success: boolean; errorMessage?: string }> {
+  const integration = await getCredentials(businessId);
+  if (!integration) {
+    return { success: false, errorMessage: 'No WhatsApp integration found.' };
+  }
+
+  const { phoneNumberId, accessToken } = integration;
+  const graphVersion = process.env.META_GRAPH_API_VERSION ?? config.meta.graphApiVersion;
+
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/register`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', pin: '000000' }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      return { success: false, errorMessage: body?.error?.message ?? `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, errorMessage: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
  * Register a webhook subscription with the Meta Cloud API for the given business.
  *
  * Sequence:
@@ -441,6 +474,33 @@ export async function exchangeEmbeddedSignupCode(
     phone.display_phone_number,
     phone.verified_name,
   );
+
+  // Step 4b: Register the phone number for Cloud API messaging
+  // This is required to send messages — without it Meta returns #133010
+  try {
+    const registerRes = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phone.id}/register`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          pin: '000000', // Default PIN — businesses can change this later
+        }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!registerRes.ok) {
+      const regBody = (await registerRes.json().catch(() => ({}))) as { error?: { message?: string } };
+      console.warn('[WhatsApp] Phone number registration warning:', regBody?.error?.message ?? `HTTP ${registerRes.status}`);
+    }
+  } catch (err) {
+    // Non-fatal — log and continue
+    console.warn('[WhatsApp] Phone number registration failed (non-fatal):', err);
+  }
 
   // Step 5: Register webhook
   const webhookResult = await registerWebhook(businessId);
