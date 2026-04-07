@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, createReadStream } from 'fs';
+import { existsSync } from 'fs';
 import { runMigrations } from './db/client.js';
 import { authRoutes } from './modules/auth/index.js';
 import { subscriptionRoutes } from './modules/subscription/index.js';
@@ -35,9 +35,10 @@ const start = async () => {
   try {
     const app = Fastify({ logger: true });
 
-    // Allow empty JSON bodies globally
+    // Allow empty JSON bodies globally, and capture raw body string for HMAC validation
     app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
       const str = (body as string) ?? '';
+      (_req as unknown as { rawBody: string }).rawBody = str;
       if (!str.trim()) { done(null, {}); return; }
       try { done(null, JSON.parse(str)); } catch (err) { done(err as Error, undefined); }
     });
@@ -54,7 +55,7 @@ const start = async () => {
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     });
 
-    app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '7.0' }));
+    app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
     app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
 
     await app.register(authRoutes);
@@ -82,35 +83,43 @@ const start = async () => {
           decorateReply: true,
           wildcard: false,
         });
+        const { readFile } = await import('fs/promises');
+        const adminHtml = await readFile(join(adminDist, 'index.html'));
         const serveAdminIndex = (_req: unknown, reply: { type: (t: string) => { send: (s: unknown) => void } }) => {
-          reply.type('text/html').send(createReadStream(join(adminDist, 'index.html')));
+          reply.type('text/html').send(adminHtml);
         };
         app.get('/admin-app', serveAdminIndex);
         app.get('/admin-app/*', serveAdminIndex);
       }
 
       if (existsSync(businessDist)) {
-        // Serve index.html for all SPA routes — no staticPlugin to avoid route conflicts
-        const serveIndex = async (_req: unknown, reply: { type: (t: string) => { send: (s: unknown) => void } }) => {
-          const { readFile } = await import('fs/promises');
-          const html = await readFile(join(businessDist, 'index.html'));
-          reply.type('text/html').send(html);
-        };
-
-        const spaRoutes = ['/', '/login', '/register', '/forgot-password', '/verify-email',
-          '/reset-password', '/subscription', '/dashboard', '/dashboard/*'];
-        for (const route of spaRoutes) {
-          app.get(route, serveIndex);
-        }
-
-        // Serve built JS/CSS assets
         await app.register(staticPlugin, {
           root: businessDist,
-          prefix: '/assets/',
+          prefix: '/',
           decorateReply: false,
-          wildcard: true,
+          wildcard: false,
         });
 
+        // Intercept browser page navigations (Accept: text/html) on SPA paths
+        // before API route handlers can return JSON auth errors.
+        // API calls from JS use fetch() which sends Accept: application/json.
+        const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
+          '/verify-email', '/reset-password', '/subscription'];
+        const indexHtmlPath = join(businessDist, 'index.html');
+
+        app.addHook('onRequest', async (request, reply) => {
+          const accept = request.headers['accept'] ?? '';
+          const path = request.url.split('?')[0];
+          const isBrowserNav = accept.includes('text/html') && request.method === 'GET';
+          const isSpaPath = spaPrefixes.some((p) => path === p || path.startsWith(p + '/'));
+          if (isBrowserNav && isSpaPath) {
+            const { readFile } = await import('fs/promises');
+            const html = await readFile(indexHtmlPath);
+            reply.type('text/html').send(html);
+          }
+        });
+
+        // Catch-all fallback for any remaining unmatched routes
         app.setNotFoundHandler(async (_req, reply) => {
           const { readFile } = await import('fs/promises');
           const html = await readFile(join(businessDist, 'index.html'));

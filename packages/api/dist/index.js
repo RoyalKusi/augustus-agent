@@ -49,7 +49,7 @@ const start = async () => {
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         });
-        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '7.0' }));
+        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '8.0' }));
         app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
         await app.register(authRoutes);
         await app.register(subscriptionRoutes);
@@ -81,28 +81,14 @@ const start = async () => {
                 app.get('/admin-app/*', serveAdminIndex);
             }
             if (existsSync(businessDist)) {
-                // Serve index.html for all SPA routes — no staticPlugin to avoid route conflicts
-                const serveIndex = async (_req, reply) => {
-                    const { readFile } = await import('fs/promises');
-                    const html = await readFile(join(businessDist, 'index.html'));
-                    reply.type('text/html').send(html);
-                };
-                const spaRoutes = ['/', '/login', '/register', '/forgot-password', '/verify-email',
-                    '/reset-password', '/subscription', '/dashboard', '/dashboard/*'];
-                for (const route of spaRoutes) {
-                    app.get(route, serveIndex);
-                }
-                // Serve built JS/CSS assets
                 await app.register(staticPlugin, {
                     root: businessDist,
-                    prefix: '/assets/',
+                    prefix: '/',
                     decorateReply: false,
-                    wildcard: true,
+                    wildcard: false,
                 });
-                app.setNotFoundHandler(async (_req, reply) => {
-                    const { readFile } = await import('fs/promises');
-                    const html = await readFile(join(businessDist, 'index.html'));
-                    reply.type('text/html').send(html);
+                app.setNotFoundHandler((_req, reply) => {
+                    reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
                 });
             }
         }

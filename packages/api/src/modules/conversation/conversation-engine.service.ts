@@ -435,20 +435,10 @@ async function runConsumerLoop(): Promise<void> {
 }
 
 export function startConversationEngineConsumer(): void {
+  if (consumerRunning) return; // prevent double-start
   consumerRunning = true;
   console.log('[ConversationEngine] Consumer started');
   void runConsumerLoop();
-
-  // Watchdog: restart consumer loop if it exits unexpectedly
-  const watchdog = setInterval(() => {
-    if (consumerRunning) {
-      void runConsumerLoop().catch((err) => {
-        console.error('[ConversationEngine] Watchdog restarting consumer after error:', err);
-      });
-    } else {
-      clearInterval(watchdog);
-    }
-  }, 30_000);
 }
 
 export function stopConversationEngineConsumer(): void {

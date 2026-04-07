@@ -22,9 +22,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
 
-      // Compute HMAC from the parsed and re-serialized body
-      // Note: for Meta webhooks, use the exact raw bytes; for our test webhooks this is equivalent
-      const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
+      // Use raw body string for HMAC validation
+      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
+        ?? JSON.stringify(request.body ?? {});
+      const rawBody = Buffer.from(rawBodyStr);
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
@@ -38,8 +39,8 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       // Acknowledge immediately — Meta requires a response within 5 seconds
       reply.status(200).send();
 
-      // Process synchronously after reply to avoid Fastify request lifecycle issues
-      setImmediate(async () => {
+      // Async processing: resolve businessId from phone_number_id, then enqueue
+      void (async () => {
         try {
           const payload = capturedBody;
           const phoneNumberId = extractPhoneNumberId(payload);
@@ -52,6 +53,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             return;
           }
 
+          // Look up businessId from phone_number_id
           const result = await pool.query<{ business_id: string }>(
             `SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`,
             [phoneNumberId],
@@ -78,7 +80,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         } catch (err) {
           app.log.error({ err }, '[Webhook] Failed to process global webhook event');
         }
-      });
+      })();
     },
   );
 
@@ -93,7 +95,9 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       const { businessId } = request.params as { businessId: string };
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
 
-      const rawBody = Buffer.from(JSON.stringify(request.body ?? {}));
+      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
+        ?? JSON.stringify(request.body ?? {});
+      const rawBody = Buffer.from(rawBodyStr);
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
