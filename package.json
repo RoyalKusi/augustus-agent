@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "build": "npm run build -w packages/api && npm run build -w packages/business-dashboard && npm run build -w packages/admin-dashboard",
+    "postinstall": "npm run build",
     "start": "node packages/api/dist/index.js",
     "dev": "concurrently -n api,business,admin -c blue,green,yellow \"npm run dev -w packages/api\" \"npm run dev -w packages/business-dashboard\" \"npm run dev -w packages/admin-dashboard\"",
     "lint": "npm run lint --workspaces --if-present",
