@@ -90,13 +90,28 @@ export default function WhatsAppSetup() {
       const code = response.authResponse?.code;
       if (!code) { if (response.status !== 'unknown') setError('Connection was cancelled or failed.'); return; }
       setLoading(true);
-      apiFetch<Integration & { webhookStatus: string }>('/whatsapp/integration/exchange-token', {
+      apiFetch<Integration & {
+        webhookStatus: string;
+        registrationStatus: string;
+        registrationError: string | null;
+        codeVerificationStatus: string;
+        nameStatus: string;
+      }>('/whatsapp/integration/exchange-token', {
         method: 'POST', body: JSON.stringify({ code }),
       }).then((result) => {
         setIntegration({ ...result, status: result.webhookStatus });
-        setMsg(result.webhookStatus === 'active'
-          ? `Connected: ${result.displayPhoneNumber} (${result.verifiedName}) — webhook active.`
-          : `Credentials saved for ${result.displayPhoneNumber}. Webhook registration pending.`);
+
+        // Build status message based on registration and webhook results
+        const regOk = result.registrationStatus === 'registered' || result.registrationStatus === 'already_registered';
+        const webhookOk = result.webhookStatus === 'active';
+
+        if (regOk && webhookOk) {
+          setMsg(`✅ Connected: ${result.displayPhoneNumber} (${result.verifiedName}) — ready to send and receive messages.`);
+        } else if (regOk && !webhookOk) {
+          setMsg(`Connected: ${result.displayPhoneNumber} — registered for Cloud API. Webhook pending: ${result.webhookError ?? 'retry using Register Webhook button.'}`);
+        } else if (!regOk) {
+          setError(`Phone number registration issue: ${result.registrationError ?? 'unknown error'}. Verification status: ${result.codeVerificationStatus}, Name status: ${result.nameStatus}.`);
+        }
       }).catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Connection failed.');
       }).finally(() => setLoading(false));

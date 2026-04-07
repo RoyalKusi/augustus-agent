@@ -360,6 +360,10 @@ export interface ExchangeTokenResult {
   phoneNumberId: string;
   displayPhoneNumber: string;
   verifiedName: string;
+  codeVerificationStatus: string;
+  nameStatus: string;
+  registrationStatus: 'registered' | 'already_registered' | 'skipped' | 'failed';
+  registrationError: string | null;
   webhookStatus: 'active' | 'pending';
   webhookError: string | null;
 }
@@ -414,16 +418,22 @@ export async function exchangeEmbeddedSignupCode(
     throw new Error('No WhatsApp Business Account found in the granted permissions.');
   }
 
-  // Step 3: Get phone number from WABA
+  // Step 3: Get phone number from WABA with verification status
   const phoneRes = await fetch(
-    `https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name`,
+    `https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,name_status`,
     {
       headers: { Authorization: `Bearer ${access_token}` },
       signal: AbortSignal.timeout(15_000),
     },
   );
   const phoneData = (await phoneRes.json()) as {
-    data?: Array<{ id: string; display_phone_number: string; verified_name: string }>;
+    data?: Array<{
+      id: string;
+      display_phone_number: string;
+      verified_name: string;
+      code_verification_status?: string;
+      name_status?: string;
+    }>;
   };
   const phone = phoneData?.data?.[0];
 
@@ -431,7 +441,7 @@ export async function exchangeEmbeddedSignupCode(
     throw new Error('No phone number found on this WhatsApp Business Account.');
   }
 
-  // Step 4: Store credentials (reuses existing service)
+  // Step 4: Store credentials
   await storeCredentials(
     businessId,
     wabaId,
@@ -442,37 +452,82 @@ export async function exchangeEmbeddedSignupCode(
     phone.verified_name,
   );
 
-  // Step 4b: Register phone number for Cloud API use
-  // This is required when the number hasn't been registered via Cloud API before.
-  // Errors here are non-fatal — the number may already be registered.
-  try {
-    const regRes = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phone.id}/register`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          pin: '000000', // default PIN — businesses can change this later
-        }),
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
-    if (!regRes.ok) {
-      const regBody = (await regRes.json().catch(() => ({}))) as { error?: { message?: string; code?: number } };
-      // Code 80007 = already registered — not an error
-      if (regBody?.error?.code !== 80007) {
-        console.warn('[WhatsApp] Phone number registration warning:', regBody?.error?.message ?? `HTTP ${regRes.status}`);
-      }
-    }
-  } catch (regErr) {
-    console.warn('[WhatsApp] Phone number registration failed (non-fatal):', regErr instanceof Error ? regErr.message : regErr);
+  const nameStatus = phone.name_status ?? 'UNKNOWN';
+  const codeVerificationStatus = phone.code_verification_status ?? 'UNKNOWN';
+
+  // Step 4b: Phone number verification (if not already verified)
+  // Per Meta docs: code_verification_status must be VERIFIED before registration.
+  // During embedded signup the user verifies the number in the flow, so it should
+  // already be VERIFIED. If not, we cannot proceed with registration.
+  if (codeVerificationStatus !== 'VERIFIED') {
+    console.warn(`[WhatsApp] Phone ${phone.id} code_verification_status=${codeVerificationStatus} — registration may fail`);
   }
 
-  // Step 5: Register webhook
+  // Step 4c: Register phone number for Cloud API use
+  // Per Meta docs: POST /{phone-id}/register with messaging_product and pin.
+  // name_status NONE or EXPIRED means no valid certificate — cannot register.
+  // code 80007 = already registered (success), 133016 = rate limited.
+  let registrationStatus: ExchangeTokenResult['registrationStatus'] = 'failed';
+  let registrationError: string | null = null;
+
+  if (nameStatus === 'NONE' || nameStatus === 'EXPIRED') {
+    registrationStatus = 'skipped';
+    registrationError = `Display name status is ${nameStatus} — number cannot be registered until a valid display name is approved in Meta Business Manager.`;
+    console.warn('[WhatsApp] Registration skipped:', registrationError);
+  } else {
+    try {
+      const regRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${phone.id}/register`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            pin: '000000',
+          }),
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+
+      if (regRes.ok) {
+        registrationStatus = 'registered';
+        console.log('[WhatsApp] Phone number registered for Cloud API successfully');
+      } else {
+        const regBody = (await regRes.json().catch(() => ({}))) as { error?: { message?: string; code?: number } };
+        const errCode = regBody?.error?.code;
+        if (errCode === 80007) {
+          // Already registered — this is fine
+          registrationStatus = 'already_registered';
+          console.log('[WhatsApp] Phone number already registered for Cloud API');
+        } else if (errCode === 133016) {
+          registrationStatus = 'failed';
+          registrationError = 'Registration rate limit reached (10 requests per 72 hours). Please try again later.';
+          console.warn('[WhatsApp]', registrationError);
+        } else {
+          registrationStatus = 'failed';
+          registrationError = regBody?.error?.message ?? `Registration failed (HTTP ${regRes.status})`;
+          console.warn('[WhatsApp] Phone number registration failed:', registrationError);
+        }
+      }
+    } catch (regErr) {
+      registrationStatus = 'failed';
+      registrationError = regErr instanceof Error ? regErr.message : 'Registration request failed';
+      console.warn('[WhatsApp] Phone number registration error:', registrationError);
+    }
+  }
+
+  // Update DB with registration error if any
+  if (registrationError) {
+    await pool.query(
+      `UPDATE whatsapp_integrations SET error_message = $1, updated_at = NOW() WHERE business_id = $2`,
+      [registrationError, businessId],
+    );
+  }
+
+  // Step 5: Subscribe WABA to webhooks
   const webhookResult = await registerWebhook(businessId);
 
   return {
@@ -480,6 +535,10 @@ export async function exchangeEmbeddedSignupCode(
     phoneNumberId: phone.id,
     displayPhoneNumber: phone.display_phone_number,
     verifiedName: phone.verified_name,
+    codeVerificationStatus,
+    nameStatus,
+    registrationStatus,
+    registrationError,
     webhookStatus: webhookResult.success ? 'active' : 'pending',
     webhookError: webhookResult.errorMessage ?? null,
   };
