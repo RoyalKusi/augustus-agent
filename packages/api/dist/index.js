@@ -49,7 +49,7 @@ const start = async () => {
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         });
-        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '4.0', built: '2026-04-07' }));
+        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '5.0' }));
         app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
         await app.register(authRoutes);
         await app.register(subscriptionRoutes);
@@ -87,24 +87,7 @@ const start = async () => {
                     decorateReply: false,
                     wildcard: false,
                 });
-                // Intercept browser page navigations (Accept: text/html) on SPA paths
-                // before API route handlers can return JSON auth errors.
-                // API calls from JS use fetch() which sends Accept: application/json.
-                const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
-                    '/verify-email', '/reset-password', '/subscription'];
-                const indexHtmlPath = join(businessDist, 'index.html');
-                app.addHook('onRequest', async (request, reply) => {
-                    const accept = request.headers['accept'] ?? '';
-                    const path = request.url.split('?')[0];
-                    const isBrowserNav = accept.includes('text/html') && request.method === 'GET';
-                    const isSpaPath = spaPrefixes.some((p) => path === p || path.startsWith(p + '/'));
-                    if (isBrowserNav && isSpaPath) {
-                        const { readFile } = await import('fs/promises');
-                        const html = await readFile(indexHtmlPath);
-                        reply.type('text/html').send(html);
-                    }
-                });
-                // Catch-all fallback for any remaining unmatched routes
+                // Catch-all fallback for any remaining unmatched routes — serves SPA index.html
                 app.setNotFoundHandler(async (_req, reply) => {
                     const { readFile } = await import('fs/promises');
                     const html = await readFile(join(businessDist, 'index.html'));
