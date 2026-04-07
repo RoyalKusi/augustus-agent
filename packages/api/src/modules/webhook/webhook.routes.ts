@@ -36,55 +36,35 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       // Capture body reference before sending reply
       const capturedBody = request.body;
 
-      // Acknowledge immediately — Meta requires a response within 5 seconds
-      reply.status(200).send();
+      // Process synchronously then acknowledge — processing is fast (< 1s)
+      try {
+        const payload = capturedBody;
+        const phoneNumberId = extractPhoneNumberId(payload);
+        const messageId = extractMessageId(payload);
 
-      // Async processing: resolve businessId from phone_number_id, then enqueue
-      void (async () => {
-        try {
-          const payload = capturedBody;
-          const phoneNumberId = extractPhoneNumberId(payload);
-          const messageId = extractMessageId(payload);
-
-          // Diagnostic: mark that async block ran
-          const diagKey = `webhook:diag:${Date.now()}`;
-          await import('../../redis/client.js').then(m => m.default.set(diagKey, JSON.stringify({ phoneNumberId, messageId, hasPayload: !!payload }), 'EX', 300));
-
-          app.log.info({ phoneNumberId, messageId }, '[Webhook] Processing global webhook');
-
-          if (!phoneNumberId) {
-            app.log.info('[Webhook] No phone_number_id — skipping');
-            return;
-          }
-
-          // Look up businessId from phone_number_id
+        if (phoneNumberId) {
           const result = await pool.query<{ business_id: string }>(
             `SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`,
             [phoneNumberId],
           );
           const businessId = result.rows[0]?.business_id;
 
-          app.log.info({ businessId, phoneNumberId }, '[Webhook] Business lookup result');
-
-          if (!businessId) {
-            app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id — skipping');
-            return;
-          }
-
-          if (messageId) {
-            const duplicate = await isDuplicate(messageId);
-            if (duplicate) {
-              app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping enqueue');
-              return;
+          if (businessId) {
+            const isDup = messageId ? await isDuplicate(messageId) : false;
+            if (!isDup) {
+              await enqueueWebhookPayload(businessId, payload);
+              app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
             }
+          } else {
+            app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id');
           }
-
-          await enqueueWebhookPayload(businessId, payload);
-          app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
-        } catch (err) {
-          app.log.error({ err }, '[Webhook] Failed to process global webhook event');
         }
-      })();
+      } catch (err) {
+        app.log.error({ err }, '[Webhook] Processing error');
+      }
+
+      // Acknowledge — Meta requires response within 5 seconds
+      return reply.status(200).send();
     },
   );
 
