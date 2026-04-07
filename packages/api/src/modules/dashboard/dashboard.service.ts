@@ -5,6 +5,7 @@
  */
 
 import { pool } from '../../db/client.js';
+import { getPlan } from '../subscription/plans.js';
 import { sendSupportTicketAck, sendSupportTicketStatusUpdate } from '../notification/index.js';
 
 // ─── Pure utility functions ───────────────────────────────────────────────────
@@ -47,38 +48,22 @@ export interface SubscriptionOverview {
 }
 
 export async function getSubscriptionOverview(businessId: string): Promise<SubscriptionOverview> {
-  const subResult = await pool.query<{
-    plan: string;
-    renewal_date: Date | null;
-  }>(
-    `SELECT plan, renewal_date FROM subscriptions
-     WHERE business_id = $1 AND status = 'active'
-     LIMIT 1`,
+  const subResult = await pool.query<{ plan: string; renewal_date: Date | null }>(
+    `SELECT plan, renewal_date FROM subscriptions WHERE business_id = $1 AND status = 'active' LIMIT 1`,
     [businessId],
   );
-
-  const usageResult = await pool.query<{
-    accumulated_cost_usd: string;
-  }>(
-    `SELECT accumulated_cost_usd FROM token_usage
-     WHERE business_id = $1
-     ORDER BY billing_cycle_start DESC
-     LIMIT 1`,
+  const usageResult = await pool.query<{ accumulated_cost_usd: string }>(
+    `SELECT accumulated_cost_usd FROM token_usage WHERE business_id = $1 ORDER BY billing_cycle_start DESC LIMIT 1`,
     [businessId],
   );
 
   const sub = subResult.rows[0];
   const usage = usageResult.rows[0];
-
-  const tierCaps: Record<string, number> = { silver: 5, gold: 15, platinum: 50 };
-  const planName = sub?.plan
-    ? sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)
-    : 'None';
+  const planName = sub?.plan ? sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1) : 'None';
   const renewalDate = sub?.renewal_date ? sub.renewal_date.toISOString() : null;
   const creditUsageUsd = usage ? Number(usage.accumulated_cost_usd) : 0;
-  const creditCapUsd = sub ? (tierCaps[sub.plan] ?? 5) : 5;
-  const creditUsagePercent =
-    creditCapUsd > 0 ? Math.round((creditUsageUsd / creditCapUsd) * 10000) / 100 : 0;
+  const creditCapUsd = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 12;
+  const creditUsagePercent = creditCapUsd > 0 ? Math.round((creditUsageUsd / creditCapUsd) * 10000) / 100 : 0;
 
   return { planName, renewalDate, creditUsageUsd, creditCapUsd, creditUsagePercent };
 }
@@ -115,10 +100,7 @@ export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
   const row = usageResult.rows[0];
   const sub = subResult.rows[0];
   const currentCostUsd = row ? Number(row.accumulated_cost_usd) : 0;
-
-  const tierCaps: Record<string, number> = { silver: 12, gold: 30, platinum: 70 };
-  const monthlyCap = sub ? (tierCaps[sub.plan] ?? 12) : 12;
-
+  const monthlyCap = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 12;
   const usagePercent = monthlyCap > 0 ? Math.round((currentCostUsd / monthlyCap) * 10000) / 100 : 0;
   const status: 'active' | 'suspended' = sub?.business_status === 'suspended' ? 'suspended' : 'active';
 

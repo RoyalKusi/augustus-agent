@@ -27,23 +27,23 @@ export default function CreditUsageWidget() {
     return () => clearInterval(id);
   }, []);
 
-  if (error) return <div style={{ color: 'red', fontSize: 12 }}>Credit usage unavailable</div>;
-  if (!data) return <div style={{ fontSize: 12 }}>Loading credit usage…</div>;
+  if (error) return <div style={{ color: 'red', fontSize: 12 }}>Token usage unavailable</div>;
+  if (!data) return <div style={{ fontSize: 12 }}>Loading token usage…</div>;
 
   const pct = Math.min(100, Math.round(isNaN(data.usagePercent) ? 0 : data.usagePercent));
   const barColor = data.status === 'suspended' ? '#e53e3e' : pct >= 95 ? '#dd6b20' : '#38a169';
-  const usedCredits = toCredits(data.currentCostUsd).toLocaleString();
-  const capCredits = toCredits(data.monthlyCap).toLocaleString();
+  const usedTokens = toCredits(data.currentCostUsd).toLocaleString();
+  const capTokens = toCredits(data.monthlyCap).toLocaleString();
 
   return (
     <div style={{ padding: '8px 0' }}>
       <div style={{ fontSize: 12, marginBottom: 4 }}>
-        AI Credits — <strong>{pct}%</strong>{' '}
+        AI Tokens — <strong>{pct}%</strong>{' '}
         <span style={{ color: data.status === 'suspended' ? 'red' : 'green' }}>
           ({data.status})
         </span>
         <span style={{ color: '#a0aec0', marginLeft: 6 }}>
-          {usedCredits} / {capCredits} credits
+          {usedTokens} / {capTokens} tokens
         </span>
       </div>
       <div style={{ background: '#e2e8f0', borderRadius: 4, height: 8, width: '100%' }}>

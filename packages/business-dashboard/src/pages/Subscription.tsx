@@ -156,7 +156,7 @@ export default function Subscription() {
             <strong>Renewal:</strong> {new Date(sub.renewalDate).toLocaleDateString()}
           </p>
           <p style={{ margin: '0 0 8px' }}>
-            <strong>AI Credits:</strong> {pct}% ({Math.round(sub.creditUsageUsd * 1000).toLocaleString()} / {Math.round(sub.creditCapUsd * 1000).toLocaleString()} credits used)
+            <strong>AI Tokens:</strong> {pct}% ({Math.round(sub.creditUsageUsd * 1000).toLocaleString()} / {Math.round(sub.creditCapUsd * 1000).toLocaleString()} tokens used)
           </p>
           <div style={{ background: '#e2e8f0', borderRadius: 4, height: 10, width: 300 }}>
             <div style={{ background: pct >= 95 ? '#e53e3e' : '#38a169', borderRadius: 4, height: 10, width: `${pct}%` }} />
@@ -196,7 +196,7 @@ export default function Subscription() {
                   {isActive && <span style={{ marginLeft: 8, fontSize: 11, color: '#276749', fontWeight: 600 }}>ACTIVE</span>}
                 </td>
                 <td style={td}>${p.priceUsd}/mo</td>
-                <td style={td}>{(p.tokenBudgetUsd * 1000).toLocaleString()} AI credits</td>
+                <td style={td}>{(p.tokenBudgetUsd * 1000).toLocaleString()} AI tokens</td>
               </tr>
             );
           })}
