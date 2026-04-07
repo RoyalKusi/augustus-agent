@@ -90,16 +90,15 @@ const start = async () => {
       }
 
       if (existsSync(businessDist)) {
+        // Serve static assets under /assets/ prefix only
         await app.register(staticPlugin, {
           root: businessDist,
-          prefix: '/',
+          prefix: '/assets/',
           decorateReply: false,
           wildcard: false,
         });
 
         // Intercept browser page navigations (Accept: text/html) on SPA paths
-        // before API route handlers can return JSON auth errors.
-        // API calls from JS use fetch() which sends Accept: application/json.
         const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
           '/verify-email', '/reset-password', '/subscription'];
         const indexHtmlPath = join(businessDist, 'index.html');
@@ -116,11 +115,17 @@ const start = async () => {
           }
         });
 
-        // Catch-all fallback — only serve index.html for GET requests (browser navigation)
-        // POST/PUT/PATCH/DELETE should never be caught here — they're API routes
+        // Root path serves index.html
+        app.get('/', async (_req, reply) => {
+          const { readFile } = await import('fs/promises');
+          const html = await readFile(indexHtmlPath);
+          reply.type('text/html').send(html);
+        });
+
+        // Catch-all GET fallback for SPA routes not matched above
         app.setNotFoundHandler((req, reply) => {
           if (req.method === 'GET') {
-            reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
+            reply.type('text/html').send(createReadStream(indexHtmlPath));
           } else {
             reply.status(404).send({ error: 'Not found' });
           }
