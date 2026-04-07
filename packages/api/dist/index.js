@@ -60,7 +60,7 @@ const start = async () => {
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         });
-        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
+        app.get('/health', async () => ({ status: 'ok', service: 'augustus-api', version: '2.0' }));
         app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
         await app.register(authRoutes);
         await app.register(subscriptionRoutes);
