@@ -2,12 +2,12 @@ const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 // User-friendly messages for common HTTP status codes
 function friendlyError(status: number, rawMessage: string): string {
-  if (status === 401) return 'Your session has expired. Please log in again.';
   if (status === 403) return 'You don\'t have permission to do that.';
   if (status === 404) return 'The requested resource was not found.';
   if (status === 422) return rawMessage; // validation errors are user-facing
   if (status === 429) return 'Too many requests. Please wait a moment and try again.';
   if (status >= 500) return 'Something went wrong on our end. Please try again shortly.';
+  // For 401 and other errors, pass through the raw message (e.g. "Invalid email or password.")
   return rawMessage || `Request failed (${status})`;
 }
 
@@ -38,8 +38,13 @@ export async function apiFetch<T = unknown>(
     }
 
     if (res.status === 401) {
-      localStorage.removeItem('augustus_token');
-      window.location.href = '/login';
+      // Only redirect to login if we're not already on an auth page
+      const authPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
+      const isAuthPage = authPaths.some(p => window.location.pathname.startsWith(p));
+      if (!isAuthPage) {
+        localStorage.removeItem('augustus_token');
+        window.location.href = '/login';
+      }
     }
 
     throw new Error(friendlyError(res.status, rawMessage));
