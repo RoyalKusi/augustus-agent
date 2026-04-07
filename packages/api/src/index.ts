@@ -35,12 +35,23 @@ const start = async () => {
   try {
     const app = Fastify({ logger: true });
 
-    // Allow empty JSON bodies globally, and capture raw body string for HMAC validation
+    // Allow empty JSON bodies globally
     app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
       const str = (body as string) ?? '';
-      (_req as unknown as { rawBody: string }).rawBody = str;
       if (!str.trim()) { done(null, {}); return; }
       try { done(null, JSON.parse(str)); } catch (err) { done(err as Error, undefined); }
+    });
+
+    // Capture raw body at app level for HMAC validation in webhook routes
+    app.addHook('preParsing', async (request, _reply, payload) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of payload) {
+        chunks.push(chunk as Buffer);
+      }
+      const raw = Buffer.concat(chunks);
+      (request as unknown as { rawBody: string }).rawBody = raw.toString('utf8');
+      const { Readable } = await import('stream');
+      return Readable.from(raw);
     });
 
     await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });

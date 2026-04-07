@@ -26,10 +26,9 @@ process.on('unhandledRejection', (reason) => {
 const start = async () => {
     try {
         const app = Fastify({ logger: true });
-        // Allow empty JSON bodies globally, and capture raw body string for HMAC validation
+        // Allow empty JSON bodies globally
         app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
             const str = body ?? '';
-            _req.rawBody = str;
             if (!str.trim()) {
                 done(null, {});
                 return;
@@ -40,6 +39,17 @@ const start = async () => {
             catch (err) {
                 done(err, undefined);
             }
+        });
+        // Capture raw body at app level for HMAC validation in webhook routes
+        app.addHook('preParsing', async (request, _reply, payload) => {
+            const chunks = [];
+            for await (const chunk of payload) {
+                chunks.push(chunk);
+            }
+            const raw = Buffer.concat(chunks);
+            request.rawBody = raw.toString('utf8');
+            const { Readable } = await import('stream');
+            return Readable.from(raw);
         });
         await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
         const allowedOrigins = process.env.CORS_ORIGINS
