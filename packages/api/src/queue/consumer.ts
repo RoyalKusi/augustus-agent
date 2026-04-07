@@ -41,8 +41,13 @@ export async function consumeWebhookEvents(
   for (const [, messages] of results) {
     for (const [msgId, fields] of messages) {
       const event = parseFields(fields);
-      await handler(event, msgId);
-      await redis.xack(WEBHOOK_STREAM, groupName, msgId);
+      try {
+        await handler(event, msgId);
+        await redis.xack(WEBHOOK_STREAM, groupName, msgId);
+      } catch (err) {
+        // Leave message in PEL — reprocessPendingEvents will reclaim it after idleMs
+        console.error('[Consumer] Handler failed, message left in PEL for reprocessing:', { msgId, err });
+      }
     }
   }
 }
@@ -62,7 +67,11 @@ export async function reprocessPendingEvents(
   const messages = result[1];
   for (const [msgId, fields] of messages) {
     const event = parseFields(fields);
-    await handler(event, msgId);
-    await redis.xack(WEBHOOK_STREAM, groupName, msgId);
+    try {
+      await handler(event, msgId);
+      await redis.xack(WEBHOOK_STREAM, groupName, msgId);
+    } catch (err) {
+      console.error('[Consumer] Reprocess handler failed, message left in PEL:', { msgId, err });
+    }
   }
 }

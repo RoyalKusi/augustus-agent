@@ -87,7 +87,7 @@ export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
     [businessId],
   );
 
-  // Get tier cap and business status from subscription + business
+  // Get tier cap and business status from subscription + token_usage suspension flag
   const subResult = await pool.query<{ plan: string; business_status: string }>(
     `SELECT s.plan, b.status AS business_status
      FROM subscriptions s
@@ -97,12 +97,22 @@ export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
     [businessId],
   );
 
+  // Check actual AI suspension from token_usage (this is what the conversation engine checks)
+  const suspendedResult = await pool.query<{ suspended: boolean }>(
+    `SELECT suspended FROM token_usage
+     WHERE business_id = $1
+     ORDER BY billing_cycle_start DESC
+     LIMIT 1`,
+    [businessId],
+  );
+
   const row = usageResult.rows[0];
   const sub = subResult.rows[0];
   const currentCostUsd = row ? Number(row.accumulated_cost_usd) : 0;
   const monthlyCap = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 12;
   const usagePercent = monthlyCap > 0 ? Math.round((currentCostUsd / monthlyCap) * 10000) / 100 : 0;
-  const status: 'active' | 'suspended' = sub?.business_status === 'suspended' ? 'suspended' : 'active';
+  const isSuspended = suspendedResult.rows[0]?.suspended === true || currentCostUsd >= monthlyCap;
+  const status: 'active' | 'suspended' = isSuspended ? 'suspended' : 'active';
 
   return { currentCostUsd, monthlyCap, usagePercent, status };
 }

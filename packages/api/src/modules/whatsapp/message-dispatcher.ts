@@ -203,6 +203,13 @@ export async function sendMessage(
     };
   }
 
+  if (integration.status !== 'active') {
+    return {
+      success: false,
+      errorMessage: `WhatsApp integration is not active (status: ${integration.status}). ${integration.errorMessage ?? ''}`.trim(),
+    };
+  }
+
   const { phoneNumberId, accessToken } = integration;
 
   // ── 2. Validate carousel bounds (Req 6.2) ─────────────────────────────────

@@ -126,8 +126,6 @@ async function evaluateThresholds(
   businessEmail: string,
 ): Promise<void> {
   const updates: string[] = [];
-  const params: unknown[] = [];
-  let paramIdx = 1;
 
   // 80% alert — Property 9
   if (pct >= 0.8 && !usage.alert_80_sent) {
@@ -147,12 +145,11 @@ async function evaluateThresholds(
   }
 
   if (updates.length > 0) {
-    params.push(businessId, usage.billing_cycle_start);
     await pool.query(
       `UPDATE token_usage
        SET ${updates.join(', ')}, updated_at = NOW()
        WHERE business_id = $1 AND billing_cycle_start = $2`,
-      params,
+      [businessId, usage.billing_cycle_start],
     );
   }
 }

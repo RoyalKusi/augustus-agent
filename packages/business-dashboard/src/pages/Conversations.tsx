@@ -40,23 +40,36 @@ export default function Conversations() {
     }
   }, []);
 
+  const loadMessages = useCallback(async (convId: string) => {
+    try {
+      const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
+      setConvMessages((m) => ({ ...m, [convId]: data.messages ?? [] }));
+    } catch {
+      // messages endpoint may not exist yet — silently ignore
+    }
+  }, []);
+
   useEffect(() => {
     load();
     // Poll every 15 seconds for new messages
-    const interval = setInterval(load, 15_000);
+    const interval = setInterval(() => {
+      load();
+      // Also refresh messages for any currently expanded conversations
+      setExpanded((current) => {
+        Object.keys(current).forEach((convId) => {
+          if (current[convId]) loadMessages(convId);
+        });
+        return current;
+      });
+    }, 15_000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, loadMessages]);
 
   const toggleExpand = async (conv: Conversation) => {
     const next = !expanded[conv.id];
     setExpanded((e) => ({ ...e, [conv.id]: next }));
-    if (next && !convMessages[conv.id]) {
-      try {
-        const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${conv.id}/messages`);
-        setConvMessages((m) => ({ ...m, [conv.id]: data.messages ?? [] }));
-      } catch {
-        // messages endpoint may not exist yet — silently ignore
-      }
+    if (next) {
+      await loadMessages(conv.id);
     }
   };
 

@@ -86,7 +86,12 @@ export default function Orders() {
       .catch(() => {});
   };
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load();
+    // Poll every 30 seconds so new orders from the message flow appear automatically
+    const interval = setInterval(load, 30_000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exportCSV = async () => {
     try {
