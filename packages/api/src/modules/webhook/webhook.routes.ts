@@ -39,8 +39,8 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       // Acknowledge immediately — Meta requires a response within 5 seconds
       reply.status(200).send();
 
-      // Async processing: resolve businessId from phone_number_id, then enqueue
-      void (async () => {
+      // Process synchronously after reply to avoid Fastify request lifecycle issues
+      setImmediate(async () => {
         try {
           const payload = capturedBody;
           const phoneNumberId = extractPhoneNumberId(payload);
@@ -53,7 +53,6 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             return;
           }
 
-          // Look up businessId from phone_number_id
           const result = await pool.query<{ business_id: string }>(
             `SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`,
             [phoneNumberId],
@@ -80,7 +79,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         } catch (err) {
           app.log.error({ err }, '[Webhook] Failed to process global webhook event');
         }
-      })();
+      });
     },
   );
 
