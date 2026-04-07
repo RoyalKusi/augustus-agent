@@ -10,6 +10,20 @@ import {
 } from './webhook.service.js';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
+  // Capture raw body for HMAC validation using a scoped preParsing hook.
+  // This avoids conflicting with the global JSON body parser.
+  app.addHook('preParsing', async (request, _reply, payload) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of payload) {
+      chunks.push(chunk as Buffer);
+    }
+    const raw = Buffer.concat(chunks);
+    (request as unknown as { rawBody: Buffer }).rawBody = raw;
+    // Return a readable stream from the buffer for Fastify to continue parsing
+    const { Readable } = await import('stream');
+    return Readable.from(raw);
+  });
+
   /**
    * POST /webhooks/whatsapp
    *
@@ -21,11 +35,9 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     '/webhooks/whatsapp',
     async (request: FastifyRequest, reply: FastifyReply) => {
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
-
-      // Use raw body string for HMAC validation
-      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
-        ?? JSON.stringify(request.body ?? {});
-      const rawBody = Buffer.from(rawBodyStr);
+      const rawBody: Buffer =
+        (request as unknown as { rawBody: Buffer }).rawBody ??
+        Buffer.from(JSON.stringify(request.body ?? {}));
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
@@ -33,38 +45,125 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Invalid signature' });
       }
 
-      // Capture body reference before sending reply
-      const capturedBody = request.body;
+      // Acknowledge immediately — Meta requires a response within 5 seconds
+      reply.status(200).send();
 
-      // Process synchronously then acknowledge — processing is fast (< 1s)
-      try {
-        const payload = capturedBody;
-        const phoneNumberId = extractPhoneNumberId(payload);
-        const messageId = extractMessageId(payload);
+      // Async processing: resolve businessId from phone_number_id, then enqueue
+      void (async () => {
+        try {
+          const payload = request.body as {
+            object?: string;
+            entry?: Array<{
+              id?: string;
+              changes?: Array<{
+                field?: string;
+                value?: {
+                  event?: string;
+                  waba_info?: { waba_id?: string };
+                  phone_number?: string;
+                  decision?: string;
+                  messaging_product?: string;
+                  metadata?: { phone_number_id?: string };
+                  messages?: unknown[];
+                };
+              }>;
+            }>;
+          };
 
-        if (phoneNumberId) {
+          const entry = payload?.entry?.[0];
+          const change = entry?.changes?.[0];
+          const field = change?.field;
+          const value = change?.value;
+
+          app.log.info({ field, event: value?.event }, '[Webhook] Processing global webhook');
+
+          // ── Handle WABA lifecycle events ──────────────────────────────────
+
+          // PARTNER_ADDED: business completed embedded signup, WABA connected to app
+          if (field === 'account_update' && value?.event === 'PARTNER_ADDED') {
+            const wabaId = value?.waba_info?.waba_id;
+            if (wabaId) {
+              app.log.info({ wabaId }, '[Webhook] PARTNER_ADDED — activating integration');
+              // Find the integration by WABA ID and activate it
+              const r = await pool.query<{ business_id: string }>(
+                `SELECT business_id FROM whatsapp_integrations WHERE waba_id = $1 LIMIT 1`,
+                [wabaId],
+              );
+              if (r.rows.length > 0) {
+                await pool.query(
+                  `UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1`,
+                  [wabaId],
+                );
+                app.log.info({ wabaId, businessId: r.rows[0].business_id }, '[Webhook] Integration activated via PARTNER_ADDED');
+              }
+            }
+            return;
+          }
+
+          // phone_number_name_update: display name approved — ensure status is active
+          if (field === 'phone_number_name_update' && value?.decision === 'APPROVED') {
+            const phoneNumberId = extractPhoneNumberId(payload);
+            if (phoneNumberId) {
+              await pool.query(
+                `UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE phone_number_id = $1 AND status != 'active'`,
+                [phoneNumberId],
+              );
+              app.log.info({ phoneNumberId }, '[Webhook] Phone number name approved — integration activated');
+            }
+            return;
+          }
+
+          // account_update VERIFIED_ACCOUNT: phone number verified
+          if (field === 'account_update' && value?.event === 'VERIFIED_ACCOUNT') {
+            const wabaId = entry?.id;
+            if (wabaId) {
+              await pool.query(
+                `UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1 AND status != 'active'`,
+                [wabaId],
+              );
+              app.log.info({ wabaId }, '[Webhook] VERIFIED_ACCOUNT — integration activated');
+            }
+            return;
+          }
+
+          // ── Handle inbound messages ───────────────────────────────────────
+
+          const phoneNumberId = extractPhoneNumberId(payload);
+          const messageId = extractMessageId(payload);
+
+          if (!phoneNumberId) {
+            app.log.info({ field }, '[Webhook] No phone_number_id — skipping');
+            return;
+          }
+
+          // Look up businessId from phone_number_id
           const result = await pool.query<{ business_id: string }>(
             `SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`,
             [phoneNumberId],
           );
           const businessId = result.rows[0]?.business_id;
 
-          if (businessId) {
-            const isDup = messageId ? await isDuplicate(messageId) : false;
-            if (!isDup) {
-              await enqueueWebhookPayload(businessId, payload);
-              app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
-            }
-          } else {
-            app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id');
-          }
-        }
-      } catch (err) {
-        app.log.error({ err }, '[Webhook] Processing error');
-      }
+          app.log.info({ businessId, phoneNumberId }, '[Webhook] Business lookup result');
 
-      // Acknowledge — Meta requires response within 5 seconds
-      return reply.status(200).send();
+          if (!businessId) {
+            app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id — skipping');
+            return;
+          }
+
+          if (messageId) {
+            const duplicate = await isDuplicate(messageId);
+            if (duplicate) {
+              app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping enqueue');
+              return;
+            }
+          }
+
+          await enqueueWebhookPayload(businessId, payload);
+          app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
+        } catch (err) {
+          app.log.error({ err }, '[Webhook] Failed to process global webhook event');
+        }
+      })();
     },
   );
 
@@ -72,16 +171,16 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
    * POST /webhooks/whatsapp/:businessId
    *
    * Per-business webhook endpoint (legacy / manual setup path).
+   * Receives inbound Meta Cloud API events.
    */
   app.post(
     '/webhooks/whatsapp/:businessId',
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { businessId } = request.params as { businessId: string };
       const signature = (request.headers['x-hub-signature-256'] as string) ?? '';
-
-      const rawBodyStr = (request as unknown as { rawBody?: string }).rawBody
-        ?? JSON.stringify(request.body ?? {});
-      const rawBody = Buffer.from(rawBodyStr);
+      const rawBody: Buffer =
+        (request as unknown as { rawBody: Buffer }).rawBody ??
+        Buffer.from(JSON.stringify(request.body ?? {}));
 
       // Validate HMAC signature
       const secret = config.meta.appSecret;
@@ -89,16 +188,13 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Invalid signature' });
       }
 
-      // Capture body before sending reply
-      const capturedBody = request.body;
-
       // Acknowledge immediately — Meta requires a response within 5 seconds
       reply.status(200).send();
 
       // Async processing: deduplication + enqueue (fire-and-forget)
       void (async () => {
         try {
-          const payload = capturedBody;
+          const payload = request.body;
           const messageId = extractMessageId(payload);
 
           if (messageId) {
