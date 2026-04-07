@@ -57,6 +57,22 @@ export default function WhatsAppSetup() {
     }
   }, [view]);
 
+  // Handle OAuth redirect: Meta may redirect back with ?code=... in the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (!code) return;
+
+    // Remove the code from the URL immediately to prevent re-processing on refresh
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
+
+    setLoading(true);
+    setError('');
+    setMsg('');
+    exchangeCode(code);
+  }, []);
+
   useEffect(() => {
     Promise.allSettled([
       apiFetch<Integration>('/whatsapp/integration').then(setIntegration).catch(() => {}),
@@ -81,6 +97,34 @@ export default function WhatsAppSetup() {
     }
   }
 
+  const exchangeCode = (code: string) => {
+    apiFetch<Integration & {
+      webhookStatus: string;
+      registrationStatus: string;
+      registrationError: string | null;
+      codeVerificationStatus: string;
+      nameStatus: string;
+    }>('/whatsapp/integration/exchange-token', {
+      method: 'POST', body: JSON.stringify({ code }),
+    }).then((result) => {
+      setIntegration({ ...result, status: result.webhookStatus === 'active' ? 'active' : result.status });
+      setView('main');
+
+      const regOk = result.registrationStatus === 'registered' || result.registrationStatus === 'already_registered';
+      const webhookOk = result.webhookStatus === 'active';
+
+      if (regOk && webhookOk) {
+        setMsg(`✅ Connected: ${result.displayPhoneNumber} (${result.verifiedName}) — ready to send and receive messages.`);
+      } else if (regOk && !webhookOk) {
+        setMsg(`Connected: ${result.displayPhoneNumber} — registered for Cloud API. Webhook pending: ${result.webhookError ?? 'retry using Register Webhook button.'}`);
+      } else if (!regOk) {
+        setError(`Phone number registration issue: ${result.registrationError ?? 'unknown error'}. Verification status: ${result.codeVerificationStatus}, Name status: ${result.nameStatus}.`);
+      }
+    }).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : 'Connection failed.');
+    }).finally(() => setLoading(false));
+  };
+
   const handleEmbeddedSignup = () => {
     if (!window.FB) { setError('Facebook SDK not loaded. Please refresh and try again.'); return; }
     if (!sdkConfig) { setError('WhatsApp config not loaded. Please refresh and try again.'); return; }
@@ -90,31 +134,7 @@ export default function WhatsAppSetup() {
       const code = response.authResponse?.code;
       if (!code) { if (response.status !== 'unknown') setError('Connection was cancelled or failed.'); return; }
       setLoading(true);
-      apiFetch<Integration & {
-        webhookStatus: string;
-        registrationStatus: string;
-        registrationError: string | null;
-        codeVerificationStatus: string;
-        nameStatus: string;
-      }>('/whatsapp/integration/exchange-token', {
-        method: 'POST', body: JSON.stringify({ code }),
-      }).then((result) => {
-        setIntegration({ ...result, status: result.webhookStatus });
-
-        // Build status message based on registration and webhook results
-        const regOk = result.registrationStatus === 'registered' || result.registrationStatus === 'already_registered';
-        const webhookOk = result.webhookStatus === 'active';
-
-        if (regOk && webhookOk) {
-          setMsg(`✅ Connected: ${result.displayPhoneNumber} (${result.verifiedName}) — ready to send and receive messages.`);
-        } else if (regOk && !webhookOk) {
-          setMsg(`Connected: ${result.displayPhoneNumber} — registered for Cloud API. Webhook pending: ${result.webhookError ?? 'retry using Register Webhook button.'}`);
-        } else if (!regOk) {
-          setError(`Phone number registration issue: ${result.registrationError ?? 'unknown error'}. Verification status: ${result.codeVerificationStatus}, Name status: ${result.nameStatus}.`);
-        }
-      }).catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Connection failed.');
-      }).finally(() => setLoading(false));
+      exchangeCode(code);
     }, {
       config_id: sdkConfig.configId,
       response_type: 'code',

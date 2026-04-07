@@ -23,6 +23,9 @@ import {
   consumerRunning,
   CONSUMER_NAME,
 } from './modules/conversation/conversation-engine.service.js';
+import { expireStaleOrders } from './modules/payment/payment.service.js';
+import { runBillingCycleResetJob } from './modules/token-budget/token-budget.service.js';
+import { sendRenewalReminders } from './modules/subscription/subscription.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -144,8 +147,24 @@ const start = async () => {
 
     void startConversationEngineConsumer();
 
+    // ── Scheduled jobs ────────────────────────────────────────────────────
+    // Expire stale payment links every 2 minutes
+    const expireInterval = setInterval(() => {
+      expireStaleOrders().catch((err) => console.error('[Scheduler] expireStaleOrders failed:', err));
+    }, 2 * 60 * 1000);
+
+    // Daily jobs: billing cycle reset + subscription renewal reminders (run at startup then every 24h)
+    const runDailyJobs = () => {
+      runBillingCycleResetJob().catch((err) => console.error('[Scheduler] runBillingCycleResetJob failed:', err));
+      sendRenewalReminders().catch((err) => console.error('[Scheduler] sendRenewalReminders failed:', err));
+    };
+    runDailyJobs();
+    const dailyInterval = setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
+
     const shutdown = () => {
       stopConversationEngineConsumer();
+      clearInterval(expireInterval);
+      clearInterval(dailyInterval);
       app.close(() => process.exit(0));
     };
     process.once('SIGTERM', shutdown);
