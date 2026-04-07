@@ -1,0 +1,1 @@
+{"version":3,"file":"webhookRateLimit.d.ts","sourceRoot":"","sources":["../../src/middleware/webhookRateLimit.ts"],"names":[],"mappings":"AAKA;;;;;GAKG;AACH,wBAAsB,qBAAqB,CAAC,UAAU,EAAE,MAAM,GAAG,OAAO,CAAC,OAAO,CAAC,CAOhF"}

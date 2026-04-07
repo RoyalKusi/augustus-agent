@@ -1,0 +1,1 @@
+{"version":3,"file":"producer.d.ts","sourceRoot":"","sources":["../../src/queue/producer.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,cAAc,4BAA4B,CAAC;AAExD,MAAM,WAAW,YAAY;IAC3B,UAAU,EAAE,MAAM,CAAC;IACnB,SAAS,EAAE,MAAM,CAAC;IAClB,OAAO,EAAE,MAAM,CAAC;CACjB;AAED,wBAAsB,mBAAmB,CAAC,KAAK,EAAE,YAAY,GAAG,OAAO,CAAC,MAAM,CAAC,CAS9E"}
