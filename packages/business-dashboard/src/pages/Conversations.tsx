@@ -101,11 +101,8 @@ export default function Conversations() {
         body: JSON.stringify({ agent_id: AGENT_ID, message: text }),
       });
       setMessages((m) => ({ ...m, [conv.id]: '' }));
-      // Refresh messages for this conversation
-      try {
-        const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${conv.id}/messages`);
-        setConvMessages((m) => ({ ...m, [conv.id]: data.messages ?? [] }));
-      } catch { /* ignore */ }
+      // Immediately refresh both the message thread and the conversation list
+      await Promise.all([loadMessages(conv.id), load()]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {

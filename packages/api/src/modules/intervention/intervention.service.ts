@@ -108,11 +108,16 @@ export async function sendAgentMessage(
     body: messageText,
   });
 
-  // Persist the agent message
+  // Persist the agent message and update conversation message count
   await pool.query(
     `INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at)
      VALUES ($1, $2, 'outbound', 'text', $3, NOW())`,
     [conversationId, businessId, messageText],
+  );
+
+  await pool.query(
+    `UPDATE conversations SET message_count = message_count + 1, updated_at = NOW() WHERE id = $1`,
+    [conversationId],
   );
 }
 
