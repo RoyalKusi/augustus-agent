@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../../config.js';
 import { pool } from '../../db/client.js';
+import redis from '../../redis/client.js';
 import {
   validateHmacSignature,
   isDuplicate,
@@ -41,10 +42,24 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         `SELECT id, business_id, direction, content, created_at
          FROM messages ORDER BY created_at DESC LIMIT 10`
       );
+
+      // Check Redis stream
+      let streamLen = 0;
+      let pendingCount = 0;
+      let redisError = null;
+      try {
+        streamLen = await redis.xlen('augustus:webhook:events');
+        const pending = await redis.xpending('augustus:webhook:events', 'conversation-engine', '-', '+', 10) as unknown[];
+        pendingCount = Array.isArray(pending) ? pending.length : 0;
+      } catch (redisErr) {
+        redisError = redisErr instanceof Error ? redisErr.message : String(redisErr);
+      }
+
       return reply.send({
         integrations: integrations.rows,
         recentConversations: conversations.rows,
         recentMessages: messages.rows,
+        redis: { streamLen, pendingCount, error: redisError },
       });
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'DB error' });

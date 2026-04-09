@@ -1,5 +1,6 @@
 import { config } from '../../config.js';
 import { pool } from '../../db/client.js';
+import redis from '../../redis/client.js';
 import { validateHmacSignature, isDuplicate, enqueueWebhookPayload, extractMessageId, extractPhoneNumberId, } from './webhook.service.js';
 export async function webhookRoutes(app) {
     // Capture raw body for HMAC validation using a scoped preParsing hook.
@@ -26,10 +27,23 @@ export async function webhookRoutes(app) {
          FROM conversations ORDER BY updated_at DESC LIMIT 5`);
             const messages = await pool.query(`SELECT id, business_id, direction, content, created_at
          FROM messages ORDER BY created_at DESC LIMIT 10`);
+            // Check Redis stream
+            let streamLen = 0;
+            let pendingCount = 0;
+            let redisError = null;
+            try {
+                streamLen = await redis.xlen('augustus:webhook:events');
+                const pending = await redis.xpending('augustus:webhook:events', 'conversation-engine', '-', '+', 10);
+                pendingCount = Array.isArray(pending) ? pending.length : 0;
+            }
+            catch (redisErr) {
+                redisError = redisErr instanceof Error ? redisErr.message : String(redisErr);
+            }
             return reply.send({
                 integrations: integrations.rows,
                 recentConversations: conversations.rows,
                 recentMessages: messages.rows,
+                redis: { streamLen, pendingCount, error: redisError },
             });
         }
         catch (err) {
