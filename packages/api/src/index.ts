@@ -93,13 +93,15 @@ const start = async () => {
       }
 
       if (existsSync(businessDist)) {
-        // Serve static assets under /assets/ prefix only
+        // Serve the entire dist folder statically
+        // Assets are at dist/assets/index-xxx.js, served as /assets/index-xxx.js
         await app.register(staticPlugin, {
           root: businessDist,
-          prefix: '/assets/',
+          prefix: '/',
           decorateReply: false,
-          wildcard: true,
-          serve: true,
+          wildcard: false,
+          index: false,
+          list: false,
         });
 
         // Intercept browser page navigations (Accept: text/html) on SPA paths
