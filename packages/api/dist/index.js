@@ -84,12 +84,12 @@ const start = async () => {
                 app.get('/admin-app/*', serveAdminIndex);
             }
             if (existsSync(businessDist)) {
-                // Serve static assets under /assets/ prefix only
+                // Serve static assets — wildcard: true so all files under /assets/ are served
                 await app.register(staticPlugin, {
                     root: businessDist,
                     prefix: '/assets/',
                     decorateReply: false,
-                    wildcard: false,
+                    wildcard: true,
                 });
                 // Intercept browser page navigations (Accept: text/html) on SPA paths
                 const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
