@@ -25,6 +25,33 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * GET /webhooks/diag — temporary diagnostic: show integration status and recent activity
+   */
+  app.get('/webhooks/diag', async (_request, reply) => {
+    try {
+      const integrations = await pool.query(
+        `SELECT business_id, phone_number_id, status, error_message, waba_id, updated_at
+         FROM whatsapp_integrations ORDER BY updated_at DESC LIMIT 5`
+      );
+      const conversations = await pool.query(
+        `SELECT id, business_id, customer_wa_number, message_count, status, updated_at
+         FROM conversations ORDER BY updated_at DESC LIMIT 5`
+      );
+      const messages = await pool.query(
+        `SELECT id, business_id, direction, content, created_at
+         FROM messages ORDER BY created_at DESC LIMIT 10`
+      );
+      return reply.send({
+        integrations: integrations.rows,
+        recentConversations: conversations.rows,
+        recentMessages: messages.rows,
+      });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'DB error' });
+    }
+  });
+
+  /**
    * POST /webhooks/test — diagnostic: verify body parsing and phone_number_id extraction
    */
   app.post('/webhooks/test', async (request, reply) => {
