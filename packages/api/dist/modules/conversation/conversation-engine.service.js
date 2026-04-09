@@ -20,8 +20,14 @@ export function filterContextWindow(messages, nowMs, maxMessages = MAX_CONTEXT_M
     return withinTime.slice(-maxMessages);
 }
 export async function loadConversationContext(conversationId, nowMs) {
-    const all = await getConversationContext(conversationId);
-    return filterContextWindow(all, nowMs);
+    try {
+        const all = await getConversationContext(conversationId);
+        return filterContextWindow(all, nowMs);
+    }
+    catch {
+        // Redis unavailable — return empty context, conversation will proceed without history
+        return [];
+    }
 }
 export function isManualInterventionActive(conversation) {
     return conversation.manual_intervention_active === true;
@@ -119,7 +125,10 @@ export async function summariseAndResetSession(conversationId, contextMessages) 
     const summary = contextMessages.slice(-10).map((m) => (m.role === 'user' ? 'Customer' : 'Agent') + ': ' + m.content.slice(0, 100)).join('\n');
     const summaryText = '[Session summary - ' + new Date().toISOString() + ']\n' + summary;
     await pool.query('UPDATE conversations SET context_summary = $1, session_start = NOW(), session_started_at = NOW(), message_count = 0, updated_at = NOW() WHERE id = $2', [summaryText, conversationId]);
-    await clearConversationContext(conversationId);
+    try {
+        await clearConversationContext(conversationId);
+    }
+    catch { /* Redis unavailable */ }
     return summaryText;
 }
 export async function persistConversationTurn(conversationId, businessId, inboundText, outboundText, inboundMetaMessageId, nowMs) {
@@ -133,8 +142,14 @@ export async function persistConversationTurn(conversationId, businessId, inboun
     if (insertedCount > 0) {
         await pool.query('UPDATE conversations SET message_count = message_count + $1, updated_at = NOW() WHERE id = $2', [insertedCount, conversationId]);
     }
-    await appendMessage(conversationId, { role: 'user', content: inboundText, timestamp: nowMs });
-    await appendMessage(conversationId, { role: 'assistant', content: outboundText, timestamp: nowMs });
+    try {
+        await appendMessage(conversationId, { role: 'user', content: inboundText, timestamp: nowMs });
+    }
+    catch { /* Redis unavailable */ }
+    try {
+        await appendMessage(conversationId, { role: 'assistant', content: outboundText, timestamp: nowMs });
+    }
+    catch { /* Redis unavailable */ }
 }
 async function getOrCreateConversation(businessId, customerWaNumber) {
     const existing = await pool.query("SELECT * FROM conversations WHERE business_id = $1 AND customer_wa_number = $2 AND status = 'active' ORDER BY session_start DESC LIMIT 1", [businessId, customerWaNumber]);
@@ -190,7 +205,11 @@ export async function processInboundMessage(msg) {
     // Use session_started_at (actual schema column)
     const sessionStartMs = new Date(conversation.session_started_at ?? conversation.session_start ?? Date.now()).getTime();
     if (isSessionExpired(conversation.message_count, sessionStartMs, timestamp)) {
-        const contextForSummary = await getConversationContext(conversationId);
+        let contextForSummary = [];
+        try {
+            contextForSummary = await getConversationContext(conversationId);
+        }
+        catch { /* Redis unavailable */ }
         await summariseAndResetSession(conversationId, contextForSummary);
     }
     const contextMessages = await loadConversationContext(conversationId, timestamp);
