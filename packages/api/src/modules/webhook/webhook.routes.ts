@@ -5,10 +5,10 @@ import redis from '../../redis/client.js';
 import {
   validateHmacSignature,
   isDuplicate,
-  enqueueWebhookPayload,
   extractMessageId,
   extractPhoneNumberId,
 } from './webhook.service.js';
+import { processInboundMessage } from '../conversation/conversation-engine.service.js';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   // Capture raw body for HMAC validation using a scoped preParsing hook.
@@ -219,13 +219,44 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           if (messageId) {
             const duplicate = await isDuplicate(messageId);
             if (duplicate) {
-              app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping enqueue');
+              app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping');
               return;
             }
           }
 
-          await enqueueWebhookPayload(businessId, payload);
-          app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
+          // Process directly — bypass Redis queue for reliability
+          const message = (payload as any)?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+          if (!message) {
+            app.log.info({ businessId }, '[Webhook] No message in payload — skipping');
+            return;
+          }
+
+          let messageText: string | null = null;
+          if (message.type === 'text') {
+            messageText = message.text?.body ?? null;
+          } else if (message.type === 'interactive') {
+            const interactive = message.interactive;
+            if (interactive?.type === 'button_reply') {
+              messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
+            } else if (interactive?.type === 'list_reply') {
+              messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
+            }
+          }
+
+          if (!messageText) {
+            app.log.info({ businessId, type: message.type }, '[Webhook] Non-text message — skipping');
+            return;
+          }
+
+          app.log.info({ businessId, messageId }, '[Webhook] Processing message directly');
+          await processInboundMessage({
+            businessId,
+            customerWaNumber: message.from ?? '',
+            messageText,
+            messageId: message.id ?? '',
+            timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
+          });
+          app.log.info({ businessId, messageId }, '[Webhook] Message processed successfully');
         } catch (err) {
           app.log.error({ err }, '[Webhook] Failed to process global webhook event');
         }
@@ -257,21 +288,44 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       // Acknowledge immediately — Meta requires a response within 5 seconds
       reply.status(200).send();
 
-      // Async processing: deduplication + enqueue (fire-and-forget)
+      // Async processing: deduplication + direct processing (fire-and-forget)
       void (async () => {
         try {
-          const payload = request.body;
+          const payload = request.body as any;
           const messageId = extractMessageId(payload);
 
           if (messageId) {
             const duplicate = await isDuplicate(messageId);
             if (duplicate) {
-              app.log.info({ businessId, messageId }, 'Duplicate webhook message — skipping enqueue');
+              app.log.info({ businessId, messageId }, 'Duplicate webhook message — skipping');
               return;
             }
           }
 
-          await enqueueWebhookPayload(businessId, payload);
+          const message = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+          if (!message) return;
+
+          let messageText: string | null = null;
+          if (message.type === 'text') {
+            messageText = message.text?.body ?? null;
+          } else if (message.type === 'interactive') {
+            const interactive = message.interactive;
+            if (interactive?.type === 'button_reply') {
+              messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
+            } else if (interactive?.type === 'list_reply') {
+              messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
+            }
+          }
+
+          if (!messageText) return;
+
+          await processInboundMessage({
+            businessId,
+            customerWaNumber: message.from ?? '',
+            messageText,
+            messageId: message.id ?? '',
+            timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
+          });
         } catch (err) {
           app.log.error({ err, businessId }, 'Failed to process webhook event asynchronously');
         }
