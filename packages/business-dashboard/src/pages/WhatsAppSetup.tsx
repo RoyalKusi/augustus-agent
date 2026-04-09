@@ -299,24 +299,6 @@ export default function WhatsAppSetup() {
           <button onClick={() => setView('manual')} style={linkBtn}>update manually</button>
         </p>
       )}
-
-      {webhookInfo && (
-        <div style={{ marginTop: 24, padding: '14px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8 }}>
-          <p style={{ margin: '0 0 8px', fontWeight: 600, fontSize: 13, color: '#92400e' }}>
-            Meta App Dashboard — Webhook Configuration
-          </p>
-          <p style={{ margin: '0 0 6px', fontSize: 12, color: '#78350f' }}>
-            In Meta App Dashboard → WhatsApp → Configuration → Webhook, set:
-          </p>
-          <div style={{ background: '#fff', border: '1px solid #fcd34d', borderRadius: 6, padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-            <div><strong>Callback URL:</strong> {webhookInfo.webhookUrl}</div>
-            <div style={{ marginTop: 4 }}><strong>Verify Token:</strong> {webhookInfo.verifyToken}</div>
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: '#92400e' }}>
-            Also subscribe to the <strong>messages</strong> webhook field under WhatsApp → Configuration.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
