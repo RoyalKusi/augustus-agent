@@ -98,7 +98,8 @@ const start = async () => {
           root: businessDist,
           prefix: '/assets/',
           decorateReply: false,
-          wildcard: false,
+          wildcard: true,
+          serve: true,
         });
 
         // Intercept browser page navigations (Accept: text/html) on SPA paths
