@@ -93,42 +93,20 @@ const start = async () => {
       }
 
       if (existsSync(businessDist)) {
-        // Serve static assets — wildcard: true so all files under /assets/ are served
+        // Serve the entire dist folder — static plugin handles all assets including index.html
         await app.register(staticPlugin, {
           root: businessDist,
-          prefix: '/assets/',
+          prefix: '/',
           decorateReply: false,
-          wildcard: true,
+          wildcard: false,
+          index: 'index.html',
+          serve: true,
         });
 
-        // Intercept browser page navigations (Accept: text/html) on SPA paths
-        const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
-          '/verify-email', '/reset-password', '/subscription'];
-        const indexHtmlPath = join(businessDist, 'index.html');
-
-        app.addHook('onRequest', async (request, reply) => {
-          const accept = request.headers['accept'] ?? '';
-          const path = request.url.split('?')[0];
-          const isBrowserNav = accept.includes('text/html') && request.method === 'GET';
-          const isSpaPath = spaPrefixes.some((p) => path === p || path.startsWith(p + '/'));
-          if (isBrowserNav && isSpaPath) {
-            const { readFile } = await import('fs/promises');
-            const html = await readFile(indexHtmlPath);
-            reply.type('text/html').send(html);
-          }
-        });
-
-        // Root path serves index.html
-        app.get('/', async (_req, reply) => {
-          const { readFile } = await import('fs/promises');
-          const html = await readFile(indexHtmlPath);
-          reply.type('text/html').send(html);
-        });
-
-        // Catch-all GET fallback for SPA routes not matched above
+        // SPA fallback: any unmatched GET returns index.html for client-side routing
         app.setNotFoundHandler((req, reply) => {
           if (req.method === 'GET') {
-            reply.type('text/html').send(createReadStream(indexHtmlPath));
+            reply.type('text/html').send(createReadStream(join(businessDist, 'index.html')));
           } else {
             reply.status(404).send({ error: 'Not found' });
           }
