@@ -9,17 +9,21 @@ let client: Redis;
 try {
   client = process.env.REDIS_URL
     ? new RedisConstructor(process.env.REDIS_URL, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 1,
         lazyConnect: true,
-        connectTimeout: 5000,
+        connectTimeout: 3000,
+        commandTimeout: 2000,
+        enableOfflineQueue: false,
       })
     : new RedisConstructor({
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: Number(process.env.REDIS_PORT) || 6379,
         password: process.env.REDIS_PASSWORD || undefined,
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 1,
         lazyConnect: true,
-        connectTimeout: 5000,
+        connectTimeout: 3000,
+        commandTimeout: 2000,
+        enableOfflineQueue: false,
       });
 
   client.on('error', (err) => {

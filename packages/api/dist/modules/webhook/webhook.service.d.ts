@@ -7,6 +7,7 @@ export declare function validateHmacSignature(rawBody: Buffer, signature: string
  * Check if a message ID has already been processed (deduplication).
  * If not a duplicate, sets the Redis key with a 24-hour TTL atomically.
  * Returns true if the message is a duplicate (already seen).
+ * Fails open (returns false) if Redis is unavailable — better to process twice than drop messages.
  */
 export declare function isDuplicate(messageId: string): Promise<boolean>;
 /**

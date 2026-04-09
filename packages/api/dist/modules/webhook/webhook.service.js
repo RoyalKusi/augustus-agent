@@ -22,12 +22,21 @@ export function validateHmacSignature(rawBody, signature, secret) {
  * Check if a message ID has already been processed (deduplication).
  * If not a duplicate, sets the Redis key with a 24-hour TTL atomically.
  * Returns true if the message is a duplicate (already seen).
+ * Fails open (returns false) if Redis is unavailable — better to process twice than drop messages.
  */
 export async function isDuplicate(messageId) {
     const key = `webhook:dedup:${messageId}`;
-    // SET NX EX: returns 'OK' if key was set (new), null if key already existed (duplicate)
-    const result = await redis.set(key, '1', 'EX', DEDUP_TTL_SECONDS, 'NX');
-    return result === null;
+    try {
+        const result = await Promise.race([
+            redis.set(key, '1', 'EX', DEDUP_TTL_SECONDS, 'NX'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 2000)),
+        ]);
+        return result === null;
+    }
+    catch {
+        // Redis unavailable or timed out — fail open, allow processing
+        return false;
+    }
 }
 /**
  * Enqueue a raw webhook event payload to the message queue for async processing.
