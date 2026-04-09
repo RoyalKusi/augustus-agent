@@ -43,14 +43,15 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
          FROM messages ORDER BY created_at DESC LIMIT 10`
       );
 
-      // Check Redis stream
-      let streamLen = 0;
-      let pendingCount = 0;
-      let redisError = null;
+      // Check Redis stream with timeout
+      let streamLen: number | null = null;
+      let redisError: string | null = null;
       try {
-        streamLen = await redis.xlen('augustus:webhook:events');
-        const pending = await redis.xpending('augustus:webhook:events', 'conversation-engine', '-', '+', 10) as unknown[];
-        pendingCount = Array.isArray(pending) ? pending.length : 0;
+        const result = await Promise.race([
+          redis.xlen('augustus:webhook:events'),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000)),
+        ]);
+        streamLen = result as number;
       } catch (redisErr) {
         redisError = redisErr instanceof Error ? redisErr.message : String(redisErr);
       }
@@ -59,7 +60,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         integrations: integrations.rows,
         recentConversations: conversations.rows,
         recentMessages: messages.rows,
-        redis: { streamLen, pendingCount, error: redisError },
+        redis: { streamLen, error: redisError },
       });
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'DB error' });

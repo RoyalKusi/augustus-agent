@@ -27,14 +27,15 @@ export async function webhookRoutes(app) {
          FROM conversations ORDER BY updated_at DESC LIMIT 5`);
             const messages = await pool.query(`SELECT id, business_id, direction, content, created_at
          FROM messages ORDER BY created_at DESC LIMIT 10`);
-            // Check Redis stream
-            let streamLen = 0;
-            let pendingCount = 0;
+            // Check Redis stream with timeout
+            let streamLen = null;
             let redisError = null;
             try {
-                streamLen = await redis.xlen('augustus:webhook:events');
-                const pending = await redis.xpending('augustus:webhook:events', 'conversation-engine', '-', '+', 10);
-                pendingCount = Array.isArray(pending) ? pending.length : 0;
+                const result = await Promise.race([
+                    redis.xlen('augustus:webhook:events'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000)),
+                ]);
+                streamLen = result;
             }
             catch (redisErr) {
                 redisError = redisErr instanceof Error ? redisErr.message : String(redisErr);
@@ -43,7 +44,7 @@ export async function webhookRoutes(app) {
                 integrations: integrations.rows,
                 recentConversations: conversations.rows,
                 recentMessages: messages.rows,
-                redis: { streamLen, pendingCount, error: redisError },
+                redis: { streamLen, error: redisError },
             });
         }
         catch (err) {

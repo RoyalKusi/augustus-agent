@@ -6,16 +6,8 @@ export async function createConsumerGroup(groupName: string): Promise<void> {
     // Use '0' to read from the beginning so messages enqueued before group creation are not lost
     await redis.xgroup('CREATE', WEBHOOK_STREAM, groupName, '0', 'MKSTREAM');
   } catch (err: any) {
-    if (err.message?.includes('BUSYGROUP')) {
-      // Group already exists — reset its last-delivered-id to '0' so unread messages are delivered
-      try {
-        await redis.xgroup('SETID', WEBHOOK_STREAM, groupName, '0');
-      } catch {
-        // ignore — group may not support SETID on this Redis version
-      }
-    } else {
-      throw err;
-    }
+    if (!err.message?.includes('BUSYGROUP')) throw err;
+    // Group already exists — that's fine, it will continue from where it left off
   }
 }
 
