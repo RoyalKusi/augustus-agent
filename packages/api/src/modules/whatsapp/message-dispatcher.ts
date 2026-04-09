@@ -204,10 +204,8 @@ export async function sendMessage(
   }
 
   if (integration.status !== 'active') {
-    return {
-      success: false,
-      errorMessage: `WhatsApp integration is not active (status: ${integration.status}). ${integration.errorMessage ?? ''}`.trim(),
-    };
+    // Log warning but still attempt to send — status may be stale
+    console.warn(`[MessageDispatcher] Integration status is "${integration.status}" for business ${businessId} — attempting send anyway`);
   }
 
   const { phoneNumberId, accessToken } = integration;
