@@ -124,9 +124,15 @@ export async function summariseAndResetSession(conversationId, contextMessages) 
 }
 export async function persistConversationTurn(conversationId, businessId, inboundText, outboundText, inboundMetaMessageId, nowMs) {
     const sentAt = new Date(nowMs).toISOString();
-    await pool.query("INSERT INTO messages (conversation_id, business_id, direction, message_type, content, meta_message_id, created_at) VALUES ($1, $2, 'inbound', 'text', $3, $4, $5) ON CONFLICT (meta_message_id) DO NOTHING", [conversationId, businessId, inboundText, inboundMetaMessageId, sentAt]);
-    await pool.query("INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, $4)", [conversationId, businessId, outboundText, sentAt]);
-    await pool.query('UPDATE conversations SET message_count = message_count + 2, updated_at = NOW() WHERE id = $1', [conversationId]);
+    const inboundResult = await pool.query("INSERT INTO messages (conversation_id, business_id, direction, message_type, content, meta_message_id, created_at) VALUES ($1, $2, 'inbound', 'text', $3, $4, $5) ON CONFLICT (meta_message_id) DO NOTHING", [conversationId, businessId, inboundText, inboundMetaMessageId, sentAt]);
+    // Use a deterministic idempotency key for the outbound message to prevent duplicates on reprocessing
+    const outboundIdempotencyKey = inboundMetaMessageId ? `out:${inboundMetaMessageId}` : null;
+    const outboundResult = await pool.query("INSERT INTO messages (conversation_id, business_id, direction, message_type, content, meta_message_id, created_at) VALUES ($1, $2, 'outbound', 'text', $3, $4, $5) ON CONFLICT (meta_message_id) DO NOTHING", [conversationId, businessId, outboundText, outboundIdempotencyKey, sentAt]);
+    // Only increment message_count for rows that were actually inserted (not duplicates)
+    const insertedCount = (inboundResult.rowCount ?? 0) + (outboundResult.rowCount ?? 0);
+    if (insertedCount > 0) {
+        await pool.query('UPDATE conversations SET message_count = message_count + $1, updated_at = NOW() WHERE id = $2', [insertedCount, conversationId]);
+    }
     await appendMessage(conversationId, { role: 'user', content: inboundText, timestamp: nowMs });
     await appendMessage(conversationId, { role: 'assistant', content: outboundText, timestamp: nowMs });
 }
@@ -134,8 +140,12 @@ async function getOrCreateConversation(businessId, customerWaNumber) {
     const existing = await pool.query("SELECT * FROM conversations WHERE business_id = $1 AND customer_wa_number = $2 AND status = 'active' ORDER BY session_start DESC LIMIT 1", [businessId, customerWaNumber]);
     if (existing.rows.length > 0)
         return existing.rows[0];
-    const created = await pool.query("INSERT INTO conversations (business_id, customer_phone, customer_wa_number, session_start, session_started_at, message_count, status) VALUES ($1, $2, $2, NOW(), NOW(), 0, 'active') RETURNING *", [businessId, customerWaNumber]);
-    return created.rows[0];
+    const created = await pool.query("INSERT INTO conversations (business_id, customer_phone, customer_wa_number, session_start, session_started_at, message_count, status) VALUES ($1, $2, $2, NOW(), NOW(), 0, 'active') ON CONFLICT DO NOTHING RETURNING *", [businessId, customerWaNumber]);
+    if (created.rows.length > 0)
+        return created.rows[0];
+    // Another concurrent request inserted first — fetch it
+    const fallback = await pool.query("SELECT * FROM conversations WHERE business_id = $1 AND customer_wa_number = $2 AND status = 'active' ORDER BY session_start DESC LIMIT 1", [businessId, customerWaNumber]);
+    return fallback.rows[0];
 }
 async function loadTrainingData(businessId) {
     const result = await pool.query(`SELECT data_type, content FROM training_data WHERE business_id = $1 ORDER BY created_at DESC`, [businessId]);
@@ -211,7 +221,9 @@ export async function processInboundMessage(msg) {
     const costUsd = (claudeResponse.inputTokens / 1_000_000) * 0.25 + (claudeResponse.outputTokens / 1_000_000) * 1.25;
     await recordInferenceCost(businessId, costUsd, businessEmail);
     const action = parseClaudeResponse(claudeResponse.text);
-    const outboundText = action.text?.trim() || claudeResponse.text;
+    // For structured actions, action.text is the conversational part with the trigger stripped.
+    // If Claude returned ONLY a trigger with no surrounding text, don't fall back to the raw response.
+    const outboundText = action.text?.trim() || (action.type === 'text' ? claudeResponse.text : '');
     // Always send the conversational text response first
     if (outboundText) {
         await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: outboundText });
@@ -330,8 +342,14 @@ async function handleWebhookEvent(event) {
                 messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
             }
         }
-        if (!messageText)
-            return; // ignore non-text messages (images, etc.)
+        if (!messageText) {
+            console.info('[ConversationEngine] Skipping non-text message', {
+                type: message.type,
+                messageId: message.id,
+                businessId: event.businessId,
+            });
+            return;
+        }
         await processInboundMessage({
             businessId: event.businessId,
             customerWaNumber: message.from ?? '',
@@ -375,19 +393,34 @@ async function runConsumerLoop() {
     }
     console.log('[ConversationEngine] Consumer loop exited');
 }
+let consumerLoopActive = false;
 export function startConversationEngineConsumer() {
     consumerRunning = true;
     console.log('[ConversationEngine] Consumer started');
-    void runConsumerLoop();
-    // Watchdog: restart consumer loop if it exits unexpectedly
-    const watchdog = setInterval(() => {
-        if (consumerRunning) {
-            void runConsumerLoop().catch((err) => {
-                console.error('[ConversationEngine] Watchdog restarting consumer after error:', err);
-            });
+    async function launchLoop() {
+        if (consumerLoopActive)
+            return; // prevent duplicate loops
+        consumerLoopActive = true;
+        try {
+            await runConsumerLoop();
         }
-        else {
+        catch (err) {
+            console.error('[ConversationEngine] Consumer loop exited with error:', err);
+        }
+        finally {
+            consumerLoopActive = false;
+        }
+    }
+    void launchLoop();
+    // Watchdog: restart consumer loop only if it has exited and consumer should still be running
+    const watchdog = setInterval(() => {
+        if (!consumerRunning) {
             clearInterval(watchdog);
+            return;
+        }
+        if (!consumerLoopActive) {
+            console.warn('[ConversationEngine] Watchdog detected dead loop — restarting');
+            void launchLoop();
         }
     }, 30_000);
 }

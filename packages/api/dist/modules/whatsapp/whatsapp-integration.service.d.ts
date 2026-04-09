@@ -84,6 +84,10 @@ export interface ExchangeTokenResult {
     phoneNumberId: string;
     displayPhoneNumber: string;
     verifiedName: string;
+    codeVerificationStatus: string;
+    nameStatus: string;
+    registrationStatus: 'registered' | 'already_registered' | 'skipped' | 'failed';
+    registrationError: string | null;
     webhookStatus: 'active' | 'pending';
     webhookError: string | null;
 }

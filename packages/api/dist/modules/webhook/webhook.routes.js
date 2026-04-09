@@ -2,6 +2,62 @@ import { config } from '../../config.js';
 import { pool } from '../../db/client.js';
 import { validateHmacSignature, isDuplicate, enqueueWebhookPayload, extractMessageId, extractPhoneNumberId, } from './webhook.service.js';
 export async function webhookRoutes(app) {
+    // Capture raw body for HMAC validation using a scoped preParsing hook.
+    // This avoids conflicting with the global JSON body parser.
+    app.addHook('preParsing', async (request, _reply, payload) => {
+        const chunks = [];
+        for await (const chunk of payload) {
+            chunks.push(chunk);
+        }
+        const raw = Buffer.concat(chunks);
+        request.rawBody = raw;
+        // Return a readable stream from the buffer for Fastify to continue parsing
+        const { Readable } = await import('stream');
+        return Readable.from(raw);
+    });
+    /**
+     * GET /webhooks/diag — temporary diagnostic: show integration status and recent activity
+     */
+    app.get('/webhooks/diag', async (_request, reply) => {
+        try {
+            const integrations = await pool.query(`SELECT business_id, phone_number_id, status, error_message, waba_id, updated_at
+         FROM whatsapp_integrations ORDER BY updated_at DESC LIMIT 5`);
+            const conversations = await pool.query(`SELECT id, business_id, customer_wa_number, message_count, status, updated_at
+         FROM conversations ORDER BY updated_at DESC LIMIT 5`);
+            const messages = await pool.query(`SELECT id, business_id, direction, content, created_at
+         FROM messages ORDER BY created_at DESC LIMIT 10`);
+            return reply.send({
+                integrations: integrations.rows,
+                recentConversations: conversations.rows,
+                recentMessages: messages.rows,
+            });
+        }
+        catch (err) {
+            return reply.status(500).send({ error: err instanceof Error ? err.message : 'DB error' });
+        }
+    });
+    /**
+     * POST /webhooks/test — diagnostic: verify body parsing and phone_number_id extraction
+     */
+    app.post('/webhooks/test', async (request, reply) => {
+        const body = request.body;
+        const phoneId = extractPhoneNumberId(body);
+        const msgId = extractMessageId(body);
+        const dbResult = phoneId
+            ? await pool.query('SELECT business_id, status FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1', [phoneId])
+            : { rows: [] };
+        // Also return all known phone_number_ids for comparison
+        const allIds = await pool.query('SELECT phone_number_id, status, business_id FROM whatsapp_integrations');
+        return reply.send({
+            bodyType: typeof body,
+            hasEntry: !!body?.entry,
+            phoneId,
+            msgId,
+            businessId: dbResult.rows[0]?.business_id ?? null,
+            integrationStatus: dbResult.rows[0]?.status ?? null,
+            allIntegrations: allIds.rows,
+        });
+    });
     /**
      * POST /webhooks/whatsapp
      *
@@ -11,67 +67,109 @@ export async function webhookRoutes(app) {
      */
     app.post('/webhooks/whatsapp', async (request, reply) => {
         const signature = request.headers['x-hub-signature-256'] ?? '';
-        // Use raw body string for HMAC validation
-        const rawBodyStr = request.rawBody
-            ?? JSON.stringify(request.body ?? {});
-        const rawBody = Buffer.from(rawBodyStr);
+        const rawBody = request.rawBody ??
+            Buffer.from(JSON.stringify(request.body ?? {}));
         // Validate HMAC signature
         const secret = config.meta.appSecret;
         if (!validateHmacSignature(rawBody, signature, secret)) {
             return reply.status(403).send({ error: 'Invalid signature' });
         }
-        // Capture body reference before sending reply
-        const capturedBody = request.body;
-        // Process synchronously then acknowledge — processing is fast (< 1s)
-        try {
-            const payload = capturedBody;
-            const phoneNumberId = extractPhoneNumberId(payload);
-            const messageId = extractMessageId(payload);
-            if (phoneNumberId) {
+        // Acknowledge immediately — Meta requires a response within 5 seconds
+        reply.status(200).send();
+        // Async processing: resolve businessId from phone_number_id, then enqueue
+        void (async () => {
+            try {
+                const payload = request.body;
+                const entry = payload?.entry?.[0];
+                const change = entry?.changes?.[0];
+                const field = change?.field;
+                const value = change?.value;
+                app.log.info({ field, event: value?.event }, '[Webhook] Processing global webhook');
+                // ── Handle WABA lifecycle events ──────────────────────────────────
+                // PARTNER_ADDED: business completed embedded signup, WABA connected to app
+                if (field === 'account_update' && value?.event === 'PARTNER_ADDED') {
+                    const wabaId = value?.waba_info?.waba_id;
+                    if (wabaId) {
+                        app.log.info({ wabaId }, '[Webhook] PARTNER_ADDED — activating integration');
+                        // Find the integration by WABA ID and activate it
+                        const r = await pool.query(`SELECT business_id FROM whatsapp_integrations WHERE waba_id = $1 LIMIT 1`, [wabaId]);
+                        if (r.rows.length > 0) {
+                            await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1`, [wabaId]);
+                            app.log.info({ wabaId, businessId: r.rows[0].business_id }, '[Webhook] Integration activated via PARTNER_ADDED');
+                        }
+                    }
+                    return;
+                }
+                // phone_number_name_update: display name approved — ensure status is active
+                if (field === 'phone_number_name_update' && value?.decision === 'APPROVED') {
+                    const phoneNumberId = extractPhoneNumberId(payload);
+                    if (phoneNumberId) {
+                        await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE phone_number_id = $1 AND status != 'active'`, [phoneNumberId]);
+                        app.log.info({ phoneNumberId }, '[Webhook] Phone number name approved — integration activated');
+                    }
+                    return;
+                }
+                // account_update VERIFIED_ACCOUNT: phone number verified
+                if (field === 'account_update' && value?.event === 'VERIFIED_ACCOUNT') {
+                    const wabaId = entry?.id;
+                    if (wabaId) {
+                        await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1 AND status != 'active'`, [wabaId]);
+                        app.log.info({ wabaId }, '[Webhook] VERIFIED_ACCOUNT — integration activated');
+                    }
+                    return;
+                }
+                // ── Handle inbound messages ───────────────────────────────────────
+                const phoneNumberId = extractPhoneNumberId(payload);
+                const messageId = extractMessageId(payload);
+                if (!phoneNumberId) {
+                    app.log.info({ field }, '[Webhook] No phone_number_id — skipping');
+                    return;
+                }
+                // Look up businessId from phone_number_id
                 const result = await pool.query(`SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`, [phoneNumberId]);
                 const businessId = result.rows[0]?.business_id;
-                if (businessId) {
-                    const isDup = messageId ? await isDuplicate(messageId) : false;
-                    if (!isDup) {
-                        await enqueueWebhookPayload(businessId, payload);
-                        app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
+                app.log.info({ businessId, phoneNumberId }, '[Webhook] Business lookup result');
+                if (!businessId) {
+                    app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id — skipping');
+                    return;
+                }
+                if (messageId) {
+                    const duplicate = await isDuplicate(messageId);
+                    if (duplicate) {
+                        app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping enqueue');
+                        return;
                     }
                 }
-                else {
-                    app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id');
-                }
+                await enqueueWebhookPayload(businessId, payload);
+                app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
             }
-        }
-        catch (err) {
-            app.log.error({ err }, '[Webhook] Processing error');
-        }
-        // Acknowledge — Meta requires response within 5 seconds
-        return reply.status(200).send();
+            catch (err) {
+                app.log.error({ err }, '[Webhook] Failed to process global webhook event');
+            }
+        })();
     });
     /**
      * POST /webhooks/whatsapp/:businessId
      *
      * Per-business webhook endpoint (legacy / manual setup path).
+     * Receives inbound Meta Cloud API events.
      */
     app.post('/webhooks/whatsapp/:businessId', async (request, reply) => {
         const { businessId } = request.params;
         const signature = request.headers['x-hub-signature-256'] ?? '';
-        const rawBodyStr = request.rawBody
-            ?? JSON.stringify(request.body ?? {});
-        const rawBody = Buffer.from(rawBodyStr);
+        const rawBody = request.rawBody ??
+            Buffer.from(JSON.stringify(request.body ?? {}));
         // Validate HMAC signature
         const secret = config.meta.appSecret;
         if (!validateHmacSignature(rawBody, signature, secret)) {
             return reply.status(403).send({ error: 'Invalid signature' });
         }
-        // Capture body before sending reply
-        const capturedBody = request.body;
         // Acknowledge immediately — Meta requires a response within 5 seconds
         reply.status(200).send();
         // Async processing: deduplication + enqueue (fire-and-forget)
         void (async () => {
             try {
-                const payload = capturedBody;
+                const payload = request.body;
                 const messageId = extractMessageId(payload);
                 if (messageId) {
                     const duplicate = await isDuplicate(messageId);

@@ -1,1 +1,1 @@
-{"version":3,"file":"whatsapp-integration.routes.d.ts","sourceRoot":"","sources":["../../../src/modules/whatsapp/whatsapp-integration.routes.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AAa/C,wBAAsB,yBAAyB,CAAC,GAAG,EAAE,eAAe,GAAG,OAAO,CAAC,IAAI,CAAC,CA4InF"}
+{"version":3,"file":"whatsapp-integration.routes.d.ts","sourceRoot":"","sources":["../../../src/modules/whatsapp/whatsapp-integration.routes.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AAa/C,wBAAsB,yBAAyB,CAAC,GAAG,EAAE,eAAe,GAAG,OAAO,CAAC,IAAI,CAAC,CAqJnF"}

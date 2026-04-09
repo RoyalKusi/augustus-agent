@@ -113,8 +113,10 @@ export async function login(email, password) {
     const issuedAt = new Date();
     const expiresAt = new Date(issuedAt.getTime() + 24 * 60 * 60 * 1000);
     const token = jwt.sign({ businessId: business.id, email }, config.jwt.secret, { expiresIn: '24h' });
-    // Store session in Redis
-    await setSession(token, { businessId: business.id, email }, 86400);
+    // Store session in Redis (fire-and-forget — JWT is source of truth)
+    setSession(token, { businessId: business.id, email }, 86400).catch((err) => {
+        console.warn('[Auth] Failed to store session in Redis (non-fatal):', err?.message);
+    });
     return { token, expiresAt };
 }
 // ─── Task 2.6: Account Lockout ────────────────────────────────────────────────

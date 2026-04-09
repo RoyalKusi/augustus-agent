@@ -109,6 +109,7 @@ export default function WhatsAppSetup() {
       webhookStatus: string;
       registrationStatus: string;
       registrationError: string | null;
+      webhookError: string | null;
       codeVerificationStatus: string;
       nameStatus: string;
     }>('/whatsapp/integration/exchange-token', {

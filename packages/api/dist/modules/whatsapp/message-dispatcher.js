@@ -115,6 +115,10 @@ export async function sendMessage(businessId, message) {
             errorMessage: 'No WhatsApp integration found for this business.',
         };
     }
+    if (integration.status !== 'active') {
+        // Log warning but still attempt to send — status may be stale
+        console.warn(`[MessageDispatcher] Integration status is "${integration.status}" for business ${businessId} — attempting send anyway`);
+    }
     const { phoneNumberId, accessToken } = integration;
     // ── 2. Validate carousel bounds (Req 6.2) ─────────────────────────────────
     if (message.type === 'carousel') {

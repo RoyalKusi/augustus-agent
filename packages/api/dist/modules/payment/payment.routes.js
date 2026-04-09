@@ -30,8 +30,20 @@ export async function paymentRoutes(app) {
     });
     // ── Task 9.2: Paynow webhook receiver ────────────────────────────────────
     // POST /payments/paynow/webhook — receive Paynow status callbacks
-    app.post('/payments/paynow/webhook', async (request, reply) => {
-        const body = request.body;
+    app.post('/payments/paynow/webhook', {
+        config: { rawBody: true },
+    }, async (request, reply) => {
+        // Paynow sends application/x-www-form-urlencoded
+        let body;
+        const contentType = request.headers['content-type'] ?? '';
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const raw = request.rawBody;
+            const text = raw ? raw.toString() : (typeof request.body === 'string' ? request.body : '');
+            body = Object.fromEntries(new URLSearchParams(text));
+        }
+        else {
+            body = request.body;
+        }
         try {
             await handlePaynowWebhook(body);
             return reply.send({ ok: true });

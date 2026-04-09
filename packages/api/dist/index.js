@@ -18,6 +18,9 @@ import { paymentRoutes } from './modules/payment/payment.routes.js';
 import { interventionRoutes } from './modules/intervention/intervention.routes.js';
 import { legalRoutes } from './routes/legal.js';
 import { startConversationEngineConsumer, stopConversationEngineConsumer, consumerRunning, CONSUMER_NAME, } from './modules/conversation/conversation-engine.service.js';
+import { expireStaleOrders } from './modules/payment/payment.service.js';
+import { runBillingCycleResetJob } from './modules/token-budget/token-budget.service.js';
+import { sendRenewalReminders } from './modules/subscription/subscription.service.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Catch unhandled rejections so the process doesn't die silently
 process.on('unhandledRejection', (reason) => {
@@ -26,10 +29,9 @@ process.on('unhandledRejection', (reason) => {
 const start = async () => {
     try {
         const app = Fastify({ logger: true });
-        // Allow empty JSON bodies globally, and capture raw body string for HMAC validation
+        // Allow empty JSON bodies globally
         app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
             const str = body ?? '';
-            _req.rawBody = str;
             if (!str.trim()) {
                 done(null, {});
                 return;
@@ -82,15 +84,14 @@ const start = async () => {
                 app.get('/admin-app/*', serveAdminIndex);
             }
             if (existsSync(businessDist)) {
+                // Serve static assets under /assets/ prefix only
                 await app.register(staticPlugin, {
                     root: businessDist,
-                    prefix: '/',
+                    prefix: '/assets/',
                     decorateReply: false,
                     wildcard: false,
                 });
                 // Intercept browser page navigations (Accept: text/html) on SPA paths
-                // before API route handlers can return JSON auth errors.
-                // API calls from JS use fetch() which sends Accept: application/json.
                 const spaPrefixes = ['/dashboard', '/login', '/register', '/forgot-password',
                     '/verify-email', '/reset-password', '/subscription'];
                 const indexHtmlPath = join(businessDist, 'index.html');
@@ -105,11 +106,20 @@ const start = async () => {
                         reply.type('text/html').send(html);
                     }
                 });
-                // Catch-all fallback for any remaining unmatched routes
-                app.setNotFoundHandler(async (_req, reply) => {
+                // Root path serves index.html
+                app.get('/', async (_req, reply) => {
                     const { readFile } = await import('fs/promises');
-                    const html = await readFile(join(businessDist, 'index.html'));
+                    const html = await readFile(indexHtmlPath);
                     reply.type('text/html').send(html);
+                });
+                // Catch-all GET fallback for SPA routes not matched above
+                app.setNotFoundHandler((req, reply) => {
+                    if (req.method === 'GET') {
+                        reply.type('text/html').send(createReadStream(indexHtmlPath));
+                    }
+                    else {
+                        reply.status(404).send({ error: 'Not found' });
+                    }
                 });
             }
         }
@@ -121,8 +131,22 @@ const start = async () => {
             console.error('[Startup] Migration error (non-fatal):', migErr);
         });
         void startConversationEngineConsumer();
+        // ── Scheduled jobs ────────────────────────────────────────────────────
+        // Expire stale payment links every 2 minutes
+        const expireInterval = setInterval(() => {
+            expireStaleOrders().catch((err) => console.error('[Scheduler] expireStaleOrders failed:', err));
+        }, 2 * 60 * 1000);
+        // Daily jobs: billing cycle reset + subscription renewal reminders (run at startup then every 24h)
+        const runDailyJobs = () => {
+            runBillingCycleResetJob().catch((err) => console.error('[Scheduler] runBillingCycleResetJob failed:', err));
+            sendRenewalReminders().catch((err) => console.error('[Scheduler] sendRenewalReminders failed:', err));
+        };
+        runDailyJobs();
+        const dailyInterval = setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         const shutdown = () => {
             stopConversationEngineConsumer();
+            clearInterval(expireInterval);
+            clearInterval(dailyInterval);
             app.close(() => process.exit(0));
         };
         process.once('SIGTERM', shutdown);

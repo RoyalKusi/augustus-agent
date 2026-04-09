@@ -4,6 +4,7 @@
  * Properties: 30, 31, 32, 34, 35
  */
 import { pool } from '../../db/client.js';
+import { getPlan } from '../subscription/plans.js';
 import { sendSupportTicketAck, sendSupportTicketStatusUpdate } from '../notification/index.js';
 // ─── Pure utility functions ───────────────────────────────────────────────────
 /**
@@ -31,22 +32,14 @@ export function isTicketReferenceUnique(ref, existingRefs) {
     return !existingRefs.includes(ref);
 }
 export async function getSubscriptionOverview(businessId) {
-    const subResult = await pool.query(`SELECT plan, renewal_date FROM subscriptions
-     WHERE business_id = $1 AND status = 'active'
-     LIMIT 1`, [businessId]);
-    const usageResult = await pool.query(`SELECT accumulated_cost_usd FROM token_usage
-     WHERE business_id = $1
-     ORDER BY billing_cycle_start DESC
-     LIMIT 1`, [businessId]);
+    const subResult = await pool.query(`SELECT plan, renewal_date FROM subscriptions WHERE business_id = $1 AND status = 'active' LIMIT 1`, [businessId]);
+    const usageResult = await pool.query(`SELECT accumulated_cost_usd FROM token_usage WHERE business_id = $1 ORDER BY billing_cycle_start DESC LIMIT 1`, [businessId]);
     const sub = subResult.rows[0];
     const usage = usageResult.rows[0];
-    const tierCaps = { silver: 5, gold: 15, platinum: 50 };
-    const planName = sub?.plan
-        ? sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)
-        : 'None';
+    const planName = sub?.plan ? sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1) : 'None';
     const renewalDate = sub?.renewal_date ? sub.renewal_date.toISOString() : null;
     const creditUsageUsd = usage ? Number(usage.accumulated_cost_usd) : 0;
-    const creditCapUsd = sub ? (tierCaps[sub.plan] ?? 5) : 5;
+    const creditCapUsd = sub ? getPlan(sub.plan).tokenBudgetUsd : 12;
     const creditUsagePercent = creditCapUsd > 0 ? Math.round((creditUsageUsd / creditCapUsd) * 10000) / 100 : 0;
     return { planName, renewalDate, creditUsageUsd, creditCapUsd, creditUsagePercent };
 }
@@ -56,19 +49,24 @@ export async function getCreditUsage(businessId) {
      WHERE business_id = $1
      ORDER BY billing_cycle_start DESC
      LIMIT 1`, [businessId]);
-    // Get tier cap and business status from subscription + business
+    // Get tier cap and business status from subscription + token_usage suspension flag
     const subResult = await pool.query(`SELECT s.plan, b.status AS business_status
      FROM subscriptions s
      JOIN businesses b ON b.id = s.business_id
      WHERE s.business_id = $1 AND s.status = 'active'
      LIMIT 1`, [businessId]);
+    // Check actual AI suspension from token_usage (this is what the conversation engine checks)
+    const suspendedResult = await pool.query(`SELECT suspended FROM token_usage
+     WHERE business_id = $1
+     ORDER BY billing_cycle_start DESC
+     LIMIT 1`, [businessId]);
     const row = usageResult.rows[0];
     const sub = subResult.rows[0];
     const currentCostUsd = row ? Number(row.accumulated_cost_usd) : 0;
-    const tierCaps = { silver: 12, gold: 30, platinum: 70 };
-    const monthlyCap = sub ? (tierCaps[sub.plan] ?? 12) : 12;
+    const monthlyCap = sub ? getPlan(sub.plan).tokenBudgetUsd : 12;
     const usagePercent = monthlyCap > 0 ? Math.round((currentCostUsd / monthlyCap) * 10000) / 100 : 0;
-    const status = sub?.business_status === 'suspended' ? 'suspended' : 'active';
+    const isSuspended = suspendedResult.rows[0]?.suspended === true || currentCostUsd >= monthlyCap;
+    const status = isSuspended ? 'suspended' : 'active';
     return { currentCostUsd, monthlyCap, usagePercent, status };
 }
 export async function getActiveConversations(businessId) {
