@@ -1,1 +1,0 @@
-{"version":3,"file":"email.js","sourceRoot":"","sources":["../../src/notifications/email.ts"],"names":[],"mappings":"AAAA;;GAEG;AACH,MAAM,CAAC,KAAK,UAAU,SAAS,CAAC,EAAU,EAAE,OAAe,EAAE,IAAY;IACvE,OAAO,CAAC,GAAG,CAAC,cAAc,EAAE,aAAa,OAAO,UAAU,IAAI,CAAC,KAAK,CAAC,CAAC,EAAE,EAAE,CAAC,KAAK,CAAC,CAAC;AACpF,CAAC"}
