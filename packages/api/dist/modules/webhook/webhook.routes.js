@@ -1,23 +1,10 @@
 import { config } from '../../config.js';
 import { pool } from '../../db/client.js';
-import { validateHmacSignature, extractPhoneNumberId, } from './webhook.service.js';
-import { processInboundMessage } from '../conversation/conversation-engine.service.js';
-// In-memory dedup set — prevents double-processing within the same process lifetime
-const recentMessageIds = new Set();
-function dedupCheck(messageId) {
-    if (recentMessageIds.has(messageId))
-        return true;
-    recentMessageIds.add(messageId);
-    // Keep set bounded — clear oldest entries after 10k
-    if (recentMessageIds.size > 10_000) {
-        const first = recentMessageIds.values().next().value;
-        if (first)
-            recentMessageIds.delete(first);
-    }
-    return false;
-}
+import redis from '../../redis/client.js';
+import { validateHmacSignature, isDuplicate, enqueueWebhookPayload, extractMessageId, extractPhoneNumberId, } from './webhook.service.js';
 export async function webhookRoutes(app) {
-    // Capture raw body for HMAC validation
+    // Capture raw body for HMAC validation using a scoped preParsing hook.
+    // This avoids conflicting with the global JSON body parser.
     app.addHook('preParsing', async (request, _reply, payload) => {
         const chunks = [];
         for await (const chunk of payload) {
@@ -25,11 +12,12 @@ export async function webhookRoutes(app) {
         }
         const raw = Buffer.concat(chunks);
         request.rawBody = raw;
+        // Return a readable stream from the buffer for Fastify to continue parsing
         const { Readable } = await import('stream');
         return Readable.from(raw);
     });
     /**
-     * GET /webhooks/diag — diagnostic endpoint
+     * GET /webhooks/diag — temporary diagnostic: show integration status and recent activity
      */
     app.get('/webhooks/diag', async (_request, reply) => {
         try {
@@ -39,11 +27,24 @@ export async function webhookRoutes(app) {
          FROM conversations ORDER BY updated_at DESC LIMIT 5`);
             const messages = await pool.query(`SELECT id, business_id, direction, content, created_at
          FROM messages ORDER BY created_at DESC LIMIT 10`);
+            // Check Redis stream with timeout
+            let streamLen = null;
+            let redisError = null;
+            try {
+                const result = await Promise.race([
+                    redis.xlen('augustus:webhook:events'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000)),
+                ]);
+                streamLen = result;
+            }
+            catch (redisErr) {
+                redisError = redisErr instanceof Error ? redisErr.message : String(redisErr);
+            }
             return reply.send({
                 integrations: integrations.rows,
                 recentConversations: conversations.rows,
                 recentMessages: messages.rows,
-                mode: 'direct-processing',
+                redis: { streamLen, error: redisError },
             });
         }
         catch (err) {
@@ -51,17 +52,46 @@ export async function webhookRoutes(app) {
         }
     });
     /**
-     * POST /webhooks/whatsapp — Global Meta Cloud API webhook endpoint
+     * POST /webhooks/test — diagnostic: verify body parsing and phone_number_id extraction
+     */
+    app.post('/webhooks/test', async (request, reply) => {
+        const body = request.body;
+        const phoneId = extractPhoneNumberId(body);
+        const msgId = extractMessageId(body);
+        const dbResult = phoneId
+            ? await pool.query('SELECT business_id, status FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1', [phoneId])
+            : { rows: [] };
+        // Also return all known phone_number_ids for comparison
+        const allIds = await pool.query('SELECT phone_number_id, status, business_id FROM whatsapp_integrations');
+        return reply.send({
+            bodyType: typeof body,
+            hasEntry: !!body?.entry,
+            phoneId,
+            msgId,
+            businessId: dbResult.rows[0]?.business_id ?? null,
+            integrationStatus: dbResult.rows[0]?.status ?? null,
+            allIntegrations: allIds.rows,
+        });
+    });
+    /**
+     * POST /webhooks/whatsapp
+     *
+     * Global Meta Cloud API webhook endpoint.
+     * Meta sends ALL subscribed WABA events to this single app-level URL.
+     * Resolves businessId from metadata.phone_number_id in the payload.
      */
     app.post('/webhooks/whatsapp', async (request, reply) => {
         const signature = request.headers['x-hub-signature-256'] ?? '';
         const rawBody = request.rawBody ??
             Buffer.from(JSON.stringify(request.body ?? {}));
-        if (!validateHmacSignature(rawBody, signature, config.meta.appSecret)) {
+        // Validate HMAC signature
+        const secret = config.meta.appSecret;
+        if (!validateHmacSignature(rawBody, signature, secret)) {
             return reply.status(403).send({ error: 'Invalid signature' });
         }
-        // Acknowledge immediately — Meta requires response within 5 seconds
+        // Acknowledge immediately — Meta requires a response within 5 seconds
         reply.status(200).send();
+        // Async processing: resolve businessId from phone_number_id, then enqueue
         void (async () => {
             try {
                 const payload = request.body;
@@ -69,166 +99,161 @@ export async function webhookRoutes(app) {
                 const change = entry?.changes?.[0];
                 const field = change?.field;
                 const value = change?.value;
-                // ── WABA lifecycle events ─────────────────────────────────────────
+                app.log.info({ field, event: value?.event }, '[Webhook] Processing global webhook');
+                // ── Handle WABA lifecycle events ──────────────────────────────────
+                // PARTNER_ADDED: business completed embedded signup, WABA connected to app
                 if (field === 'account_update' && value?.event === 'PARTNER_ADDED') {
                     const wabaId = value?.waba_info?.waba_id;
                     if (wabaId) {
-                        await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1`, [wabaId]);
+                        app.log.info({ wabaId }, '[Webhook] PARTNER_ADDED — activating integration');
+                        // Find the integration by WABA ID and activate it
+                        const r = await pool.query(`SELECT business_id FROM whatsapp_integrations WHERE waba_id = $1 LIMIT 1`, [wabaId]);
+                        if (r.rows.length > 0) {
+                            await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1`, [wabaId]);
+                            app.log.info({ wabaId, businessId: r.rows[0].business_id }, '[Webhook] Integration activated via PARTNER_ADDED');
+                        }
                     }
                     return;
                 }
+                // phone_number_name_update: display name approved — ensure status is active
                 if (field === 'phone_number_name_update' && value?.decision === 'APPROVED') {
                     const phoneNumberId = extractPhoneNumberId(payload);
                     if (phoneNumberId) {
                         await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE phone_number_id = $1 AND status != 'active'`, [phoneNumberId]);
+                        app.log.info({ phoneNumberId }, '[Webhook] Phone number name approved — integration activated');
                     }
                     return;
                 }
+                // account_update VERIFIED_ACCOUNT: phone number verified
                 if (field === 'account_update' && value?.event === 'VERIFIED_ACCOUNT') {
                     const wabaId = entry?.id;
                     if (wabaId) {
                         await pool.query(`UPDATE whatsapp_integrations SET status = 'active', error_message = NULL, updated_at = NOW() WHERE waba_id = $1 AND status != 'active'`, [wabaId]);
+                        app.log.info({ wabaId }, '[Webhook] VERIFIED_ACCOUNT — integration activated');
                     }
                     return;
                 }
-                // ── Inbound messages ──────────────────────────────────────────────
-                const message = value?.messages?.[0];
-                if (!message)
-                    return;
+                // ── Handle inbound messages ───────────────────────────────────────
                 const phoneNumberId = extractPhoneNumberId(payload);
-                if (!phoneNumberId)
+                const messageId = extractMessageId(payload);
+                if (!phoneNumberId) {
+                    app.log.info({ field }, '[Webhook] No phone_number_id — skipping');
                     return;
+                }
+                // Look up businessId from phone_number_id
                 const result = await pool.query(`SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1`, [phoneNumberId]);
                 const businessId = result.rows[0]?.business_id;
+                app.log.info({ businessId, phoneNumberId }, '[Webhook] Business lookup result');
                 if (!businessId) {
-                    app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id');
+                    app.log.warn({ phoneNumberId }, '[Webhook] No business found for phone_number_id — skipping');
                     return;
                 }
-                const messageId = message.id ?? '';
-                if (messageId && dedupCheck(messageId)) {
-                    app.log.info({ messageId }, '[Webhook] Duplicate — skipping');
-                    return;
-                }
-                // Extract text from message
-                let messageText = null;
-                if (message.type === 'text') {
-                    messageText = message.text?.body ?? null;
-                }
-                else if (message.type === 'interactive') {
-                    const interactive = message.interactive;
-                    if (interactive?.type === 'button_reply') {
-                        messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
-                    }
-                    else if (interactive?.type === 'list_reply') {
-                        messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
+                if (messageId) {
+                    const duplicate = await isDuplicate(messageId);
+                    if (duplicate) {
+                        app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping enqueue');
+                        return;
                     }
                 }
-                if (!messageText) {
-                    app.log.info({ type: message.type, messageId }, '[Webhook] Non-text message — skipping');
-                    return;
-                }
-                app.log.info({ businessId, messageId, messageText }, '[Webhook] Processing message directly');
-                // Process directly — no Redis queue needed
-                await processInboundMessage({
-                    businessId,
-                    customerWaNumber: message.from ?? '',
-                    messageText,
-                    messageId,
-                    timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
-                });
-                app.log.info({ businessId, messageId }, '[Webhook] Message processed successfully');
+                await enqueueWebhookPayload(businessId, payload);
+                app.log.info({ businessId, messageId }, '[Webhook] Enqueued successfully');
             }
             catch (err) {
-                app.log.error({ err }, '[Webhook] Failed to process webhook event');
+                app.log.error({ err }, '[Webhook] Failed to process global webhook event');
             }
         })();
     });
     /**
-     * POST /webhooks/whatsapp/:businessId — per-business legacy endpoint
+     * POST /webhooks/whatsapp/:businessId
+     *
+     * Per-business webhook endpoint (legacy / manual setup path).
+     * Receives inbound Meta Cloud API events.
      */
     app.post('/webhooks/whatsapp/:businessId', async (request, reply) => {
         const { businessId } = request.params;
         const signature = request.headers['x-hub-signature-256'] ?? '';
         const rawBody = request.rawBody ??
             Buffer.from(JSON.stringify(request.body ?? {}));
-        if (!validateHmacSignature(rawBody, signature, config.meta.appSecret)) {
+        // Validate HMAC signature
+        const secret = config.meta.appSecret;
+        if (!validateHmacSignature(rawBody, signature, secret)) {
             return reply.status(403).send({ error: 'Invalid signature' });
         }
+        // Acknowledge immediately — Meta requires a response within 5 seconds
         reply.status(200).send();
+        // Async processing: deduplication + enqueue (fire-and-forget)
         void (async () => {
             try {
                 const payload = request.body;
-                const message = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-                if (!message)
-                    return;
-                const messageId = message.id ?? '';
-                if (messageId && dedupCheck(messageId))
-                    return;
-                let messageText = null;
-                if (message.type === 'text') {
-                    messageText = message.text?.body ?? null;
-                }
-                else if (message.type === 'interactive') {
-                    const interactive = message.interactive;
-                    if (interactive?.type === 'button_reply') {
-                        messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
-                    }
-                    else if (interactive?.type === 'list_reply') {
-                        messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
+                const messageId = extractMessageId(payload);
+                if (messageId) {
+                    const duplicate = await isDuplicate(messageId);
+                    if (duplicate) {
+                        app.log.info({ businessId, messageId }, 'Duplicate webhook message — skipping enqueue');
+                        return;
                     }
                 }
-                if (!messageText)
-                    return;
-                await processInboundMessage({
-                    businessId,
-                    customerWaNumber: message.from ?? '',
-                    messageText,
-                    messageId,
-                    timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
-                });
+                await enqueueWebhookPayload(businessId, payload);
             }
             catch (err) {
-                app.log.error({ err, businessId }, '[Webhook] Failed to process per-business webhook');
+                app.log.error({ err, businessId }, 'Failed to process webhook event asynchronously');
             }
         })();
     });
     /**
-     * GET /webhooks/whatsapp — global hub.challenge verification
+     * GET /webhooks/whatsapp
+     *
+     * Global Meta hub.challenge verification endpoint (no businessId).
+     * Meta calls this URL when you save the webhook config in the dashboard.
+     * Verifies hub.verify_token against the global META_WEBHOOK_VERIFY_TOKEN.
      */
     app.get('/webhooks/whatsapp', async (request, reply) => {
         const query = request.query;
-        if (query['hub.mode'] !== 'subscribe' || !query['hub.verify_token'] || !query['hub.challenge']) {
+        const mode = query['hub.mode'];
+        const verifyToken = query['hub.verify_token'];
+        const challenge = query['hub.challenge'];
+        if (mode !== 'subscribe' || !verifyToken || !challenge) {
             return reply.status(403).send({ error: 'Invalid hub verification request' });
         }
-        if (query['hub.verify_token'] !== config.meta.verifyToken) {
+        if (verifyToken !== config.meta.verifyToken) {
             return reply.status(403).send({ error: 'Verify token mismatch' });
         }
-        return reply.status(200).send(query['hub.challenge']);
+        return reply.status(200).send(challenge);
     });
     /**
-     * GET /webhooks/whatsapp/:businessId — per-business hub.challenge verification
+     * GET /webhooks/whatsapp/:businessId
+     *
+     * Per-business Meta hub.challenge verification endpoint.
+     * Verifies hub.mode === 'subscribe' and hub.verify_token matches the stored
+     * webhook_verify_token for the business. Returns hub.challenge if valid, 403 otherwise.
      */
     app.get('/webhooks/whatsapp/:businessId', async (request, reply) => {
         const { businessId } = request.params;
         const query = request.query;
-        if (query['hub.mode'] !== 'subscribe' || !query['hub.verify_token'] || !query['hub.challenge']) {
+        const mode = query['hub.mode'];
+        const verifyToken = query['hub.verify_token'];
+        const challenge = query['hub.challenge'];
+        if (mode !== 'subscribe' || !verifyToken || !challenge) {
             return reply.status(403).send({ error: 'Invalid hub verification request' });
         }
-        if (query['hub.verify_token'] === config.meta.verifyToken) {
-            return reply.status(200).send(query['hub.challenge']);
+        // Check global token first, then per-business token
+        if (verifyToken === config.meta.verifyToken) {
+            return reply.status(200).send(challenge);
         }
+        // Look up the stored webhook_verify_token for this business
+        let storedToken = null;
         try {
             const result = await pool.query(`SELECT webhook_verify_token FROM whatsapp_integrations WHERE business_id = $1`, [businessId]);
-            const storedToken = result.rows[0]?.webhook_verify_token ?? null;
-            if (!storedToken || query['hub.verify_token'] !== storedToken) {
-                return reply.status(403).send({ error: 'Verify token mismatch' });
-            }
-            return reply.status(200).send(query['hub.challenge']);
+            storedToken = result.rows[0]?.webhook_verify_token ?? null;
         }
         catch (err) {
             app.log.error({ err, businessId }, 'Failed to look up webhook_verify_token');
             return reply.status(500).send({ error: 'Internal server error' });
         }
+        if (!storedToken || verifyToken !== storedToken) {
+            return reply.status(403).send({ error: 'Verify token mismatch' });
+        }
+        return reply.status(200).send(challenge);
     });
 }
 //# sourceMappingURL=webhook.routes.js.map

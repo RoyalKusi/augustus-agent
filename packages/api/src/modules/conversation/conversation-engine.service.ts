@@ -24,13 +24,8 @@ export function filterContextWindow(messages, nowMs, maxMessages = MAX_CONTEXT_M
 }
 
 export async function loadConversationContext(conversationId, nowMs) {
-  try {
-    const all = await getConversationContext(conversationId);
-    return filterContextWindow(all, nowMs);
-  } catch {
-    // Redis unavailable — return empty context, conversation will proceed without history
-    return [];
-  }
+  const all = await getConversationContext(conversationId);
+  return filterContextWindow(all, nowMs);
 }
 
 export function isManualInterventionActive(conversation) {
@@ -123,7 +118,7 @@ export async function summariseAndResetSession(conversationId, contextMessages) 
     'UPDATE conversations SET context_summary = $1, session_start = NOW(), session_started_at = NOW(), message_count = 0, updated_at = NOW() WHERE id = $2',
     [summaryText, conversationId]
   );
-  try { await clearConversationContext(conversationId); } catch { /* Redis unavailable */ }
+  await clearConversationContext(conversationId);
   return summaryText;
 }
 
@@ -144,8 +139,8 @@ export async function persistConversationTurn(conversationId, businessId, inboun
   if (insertedCount > 0) {
     await pool.query('UPDATE conversations SET message_count = message_count + $1, updated_at = NOW() WHERE id = $2', [insertedCount, conversationId]);
   }
-  try { await appendMessage(conversationId, { role: 'user', content: inboundText, timestamp: nowMs }); } catch { /* Redis unavailable */ }
-  try { await appendMessage(conversationId, { role: 'assistant', content: outboundText, timestamp: nowMs }); } catch { /* Redis unavailable */ }
+  await appendMessage(conversationId, { role: 'user', content: inboundText, timestamp: nowMs });
+  await appendMessage(conversationId, { role: 'assistant', content: outboundText, timestamp: nowMs });
 }
 
 async function getOrCreateConversation(businessId, customerWaNumber) {
@@ -215,8 +210,7 @@ export async function processInboundMessage(msg) {
   // Use session_started_at (actual schema column)
   const sessionStartMs = new Date(conversation.session_started_at ?? conversation.session_start ?? Date.now()).getTime();
   if (isSessionExpired(conversation.message_count, sessionStartMs, timestamp)) {
-    let contextForSummary = [];
-    try { contextForSummary = await getConversationContext(conversationId); } catch { /* Redis unavailable */ }
+    const contextForSummary = await getConversationContext(conversationId);
     await summariseAndResetSession(conversationId, contextForSummary);
   }
 
