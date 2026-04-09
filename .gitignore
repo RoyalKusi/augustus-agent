@@ -3,8 +3,8 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build outputs
-dist/
+# Build outputs — keep dist/ tracked so Hostinger can deploy without building
+# dist/
 build/
 *.tsbuildinfo
 
