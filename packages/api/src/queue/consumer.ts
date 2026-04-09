@@ -3,9 +3,19 @@ import { WEBHOOK_STREAM, WebhookEvent } from './producer.js';
 
 export async function createConsumerGroup(groupName: string): Promise<void> {
   try {
-    await redis.xgroup('CREATE', WEBHOOK_STREAM, groupName, '$', 'MKSTREAM');
+    // Use '0' to read from the beginning so messages enqueued before group creation are not lost
+    await redis.xgroup('CREATE', WEBHOOK_STREAM, groupName, '0', 'MKSTREAM');
   } catch (err: any) {
-    if (!err.message?.includes('BUSYGROUP')) throw err;
+    if (err.message?.includes('BUSYGROUP')) {
+      // Group already exists — reset its last-delivered-id to '0' so unread messages are delivered
+      try {
+        await redis.xgroup('SETID', WEBHOOK_STREAM, groupName, '0');
+      } catch {
+        // ignore — group may not support SETID on this Redis version
+      }
+    } else {
+      throw err;
+    }
   }
 }
 
