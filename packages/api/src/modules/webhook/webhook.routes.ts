@@ -32,14 +32,18 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     const phoneId = extractPhoneNumberId(body);
     const msgId = extractMessageId(body);
     const dbResult = phoneId
-      ? await pool.query<{ business_id: string }>('SELECT business_id FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1', [phoneId])
+      ? await pool.query<{ business_id: string; status: string }>('SELECT business_id, status FROM whatsapp_integrations WHERE phone_number_id = $1 LIMIT 1', [phoneId])
       : { rows: [] };
+    // Also return all known phone_number_ids for comparison
+    const allIds = await pool.query<{ phone_number_id: string; status: string; business_id: string }>('SELECT phone_number_id, status, business_id FROM whatsapp_integrations');
     return reply.send({
       bodyType: typeof body,
       hasEntry: !!(body as Record<string,unknown>)?.entry,
       phoneId,
       msgId,
       businessId: dbResult.rows[0]?.business_id ?? null,
+      integrationStatus: dbResult.rows[0]?.status ?? null,
+      allIntegrations: allIds.rows,
     });
   });
 
