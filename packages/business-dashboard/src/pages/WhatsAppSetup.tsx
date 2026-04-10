@@ -34,15 +34,9 @@ interface Integration {
 
 type View = 'main' | 'manual';
 
-interface WebhookUrlInfo {
-  webhookUrl: string;
-  verifyToken: string;
-}
-
 export default function WhatsAppSetup() {
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [sdkConfig, setSdkConfig] = useState<EmbeddedSignupConfig | null>(null);
-  const [webhookInfo, setWebhookInfo] = useState<WebhookUrlInfo | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [view, setView] = useState<View>('main');
   const [loading, setLoading] = useState(false);
@@ -85,7 +79,6 @@ export default function WhatsAppSetup() {
       apiFetch<EmbeddedSignupConfig>('/whatsapp/integration/embedded-signup-config')
         .then((cfg) => { setSdkConfig(cfg); initSdk(cfg); })
         .catch(() => {}),
-      apiFetch<WebhookUrlInfo>('/whatsapp/integration/webhook-url').then(setWebhookInfo).catch(() => {}),
     ]).finally(() => setPageLoading(false));
   }, []);
 
@@ -298,24 +291,6 @@ export default function WhatsAppSetup() {
           {' or '}
           <button onClick={() => setView('manual')} style={linkBtn}>update manually</button>
         </p>
-      )}
-
-      {webhookInfo && (
-        <div style={{ marginTop: 24, padding: '14px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8 }}>
-          <p style={{ margin: '0 0 8px', fontWeight: 600, fontSize: 13, color: '#92400e' }}>
-            Meta App Dashboard — Webhook Configuration
-          </p>
-          <p style={{ margin: '0 0 6px', fontSize: 12, color: '#78350f' }}>
-            In Meta App Dashboard → WhatsApp → Configuration → Webhook, set:
-          </p>
-          <div style={{ background: '#fff', border: '1px solid #fcd34d', borderRadius: 6, padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-            <div><strong>Callback URL:</strong> {webhookInfo.webhookUrl}</div>
-            <div style={{ marginTop: 4 }}><strong>Verify Token:</strong> {webhookInfo.verifyToken}</div>
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: '#92400e' }}>
-            Also subscribe to the <strong>messages</strong> webhook field under WhatsApp → Configuration.
-          </p>
-        </div>
       )}
     </div>
   );
