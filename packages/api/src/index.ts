@@ -59,6 +59,21 @@ const start = async () => {
 
     app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
     app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
+    app.get('/health/paths', async () => {
+      const businessDist = join(__dirname, '../../business-dashboard/dist');
+      const adminDist = join(__dirname, '../../admin-dashboard/dist');
+      const { readdirSync } = await import('fs');
+      const listDir = (p: string) => { try { return readdirSync(p); } catch { return null; } };
+      return {
+        __dirname,
+        businessDist,
+        adminDist,
+        businessDistExists: existsSync(businessDist),
+        adminDistExists: existsSync(adminDist),
+        businessDistFiles: listDir(businessDist),
+        businessAssetsFiles: listDir(join(businessDist, 'assets')),
+      };
+    });
 
     await app.register(authRoutes);
     await app.register(subscriptionRoutes);
