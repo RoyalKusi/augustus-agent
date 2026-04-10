@@ -13,7 +13,7 @@ function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), REDIS_TIMEOUT_MS)),
-  ]);
+  ]).catch(() => fallback);
 }
 
 export async function getConversationContext(conversationId: string): Promise<Message[]> {

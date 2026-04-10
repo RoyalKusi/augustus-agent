@@ -6,20 +6,22 @@ const RedisConstructor = (IORedis as any).default ?? IORedis;
 
 let client: Redis;
 
+const SHARED_OPTIONS = {
+  maxRetriesPerRequest: 1,
+  connectTimeout: 5000,
+  keepAlive: 1000,
+  noDelay: true,
+  retryStrategy: (times: number) => (times > 2 ? null : Math.min(times * 200, 1000)),
+};
+
 try {
   client = process.env.REDIS_URL
-    ? new RedisConstructor(process.env.REDIS_URL, {
-        maxRetriesPerRequest: 1,
-        connectTimeout: 5000,
-        // enableOfflineQueue: true (default) — queue commands during reconnect
-        tls: process.env.REDIS_URL.startsWith('rediss://') ? {} : undefined,
-      })
+    ? new RedisConstructor(process.env.REDIS_URL, SHARED_OPTIONS)
     : new RedisConstructor({
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: Number(process.env.REDIS_PORT) || 6379,
         password: process.env.REDIS_PASSWORD || undefined,
-        maxRetriesPerRequest: 1,
-        connectTimeout: 5000,
+        ...SHARED_OPTIONS,
       });
 
   client.on('error', (err) => {
