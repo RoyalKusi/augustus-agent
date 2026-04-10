@@ -216,8 +216,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             return;
           }
 
+          app.log.info({ businessId, messageId }, '[Webhook] Checking duplicate');
           if (messageId) {
             const duplicate = await isDuplicate(messageId);
+            app.log.info({ businessId, messageId, duplicate }, '[Webhook] Duplicate check result');
             if (duplicate) {
               app.log.info({ businessId, messageId }, '[Webhook] Duplicate — skipping');
               return;
