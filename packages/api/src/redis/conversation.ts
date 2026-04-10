@@ -7,10 +7,22 @@ export interface Message {
 }
 
 const key = (conversationId: string) => `conv_ctx:${conversationId}`;
+const REDIS_TIMEOUT_MS = 2000;
+
+function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), REDIS_TIMEOUT_MS)),
+  ]);
+}
 
 export async function getConversationContext(conversationId: string): Promise<Message[]> {
-  const items = await client.lrange(key(conversationId), 0, -1);
-  return items.map((item: string) => JSON.parse(item) as Message);
+  try {
+    const items = await withTimeout(client.lrange(key(conversationId), 0, -1), []);
+    return items.map((item: string) => JSON.parse(item) as Message);
+  } catch {
+    return [];
+  }
 }
 
 export async function appendMessage(
@@ -20,11 +32,20 @@ export async function appendMessage(
   ttlSeconds = 3600,
 ): Promise<void> {
   const k = key(conversationId);
-  await client.rpush(k, JSON.stringify(message));
-  await client.ltrim(k, -maxMessages, -1);
-  await client.expire(k, ttlSeconds);
+  try {
+    await withTimeout(
+      client.rpush(k, JSON.stringify(message)).then(() => client.ltrim(k, -maxMessages, -1)).then(() => client.expire(k, ttlSeconds)),
+      undefined,
+    );
+  } catch {
+    // non-fatal — context will just be empty on next message
+  }
 }
 
 export async function clearConversationContext(conversationId: string): Promise<void> {
-  await client.del(key(conversationId));
+  try {
+    await withTimeout(client.del(key(conversationId)), 0);
+  } catch {
+    // non-fatal
+  }
 }
