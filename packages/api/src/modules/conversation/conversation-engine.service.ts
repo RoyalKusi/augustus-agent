@@ -262,19 +262,20 @@ export async function processInboundMessage(msg) {
     await summariseAndResetSession(conversationId, contextForSummary);
   }
 
-  const contextMessages = await loadConversationContext(conversationId, timestamp);
-  const language = detectLanguage(messageText);
-  const [trainingData, products, settingsResult] = await Promise.all([
+  // Load context and all business data in parallel
+  const [contextMessages, trainingData, products, settingsResult, updatedConv] = await Promise.all([
+    loadConversationContext(conversationId, timestamp),
     loadTrainingData(businessId),
     loadInStockProducts(businessId),
     pool.query<{ in_chat_payments_enabled: boolean; external_payment_details: Record<string, string> | null }>(
       'SELECT in_chat_payments_enabled, external_payment_details FROM businesses WHERE id = $1',
       [businessId]
     ),
+    pool.query('SELECT context_summary FROM conversations WHERE id = $1', [conversationId]),
   ]);
+  const language = detectLanguage(messageText);
   const paymentSettings = settingsResult.rows[0];
   const inChatPaymentsEnabled = paymentSettings?.in_chat_payments_enabled ?? true;
-  const updatedConv = await pool.query('SELECT context_summary FROM conversations WHERE id = $1', [conversationId]);
   const contextSummary = updatedConv.rows[0]?.context_summary || null;
   const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled);
 
@@ -292,7 +293,6 @@ export async function processInboundMessage(msg) {
   const businessEmail = await getBusinessEmail(businessId);
   // Claude Haiku pricing: $0.25/M input, $1.25/M output
   const costUsd = (claudeResponse.inputTokens / 1_000_000) * 0.25 + (claudeResponse.outputTokens / 1_000_000) * 1.25;
-  await recordInferenceCost(businessId, costUsd, businessEmail);
 
   const action = parseClaudeResponse(claudeResponse.text);
   // For structured actions, action.text is the conversational part with the trigger stripped.
@@ -414,7 +414,11 @@ export async function processInboundMessage(msg) {
     }
   }
 
-  await persistConversationTurn(conversationId, businessId, messageText, outboundText, messageId, timestamp);
+  // Persist and record cost in background — don't block the response
+  void Promise.all([
+    persistConversationTurn(conversationId, businessId, messageText, outboundText, messageId, timestamp),
+    getBusinessEmail(businessId).then(email => recordInferenceCost(businessId, costUsd, email)),
+  ]);
   return { dispatched: true, action };
 }
 

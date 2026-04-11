@@ -7,7 +7,7 @@ export interface Message {
 }
 
 const key = (conversationId: string) => `conv_ctx:${conversationId}`;
-const REDIS_TIMEOUT_MS = 2000;
+const REDIS_TIMEOUT_MS = 800;
 
 function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return Promise.race([
