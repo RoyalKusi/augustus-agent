@@ -11,6 +11,12 @@ import {
 import { processInboundMessage } from '../conversation/conversation-engine.service.js';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
+  // Store last processing error for diagnostics
+  let lastError: { message: string; time: string } | null = null;
+
+  app.get('/webhooks/last-error', async (_request, reply) => {
+    return reply.send({ lastError });
+  });
   // Capture raw body for HMAC validation using a scoped preParsing hook.
   // This avoids conflicting with the global JSON body parser.
   app.addHook('preParsing', async (request, _reply, payload) => {
@@ -260,9 +266,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           });
           app.log.info({ businessId, messageId }, '[Webhook] Message processed successfully');
         } catch (err) {
+          const errMsg = err instanceof Error ? `${err.message} ${err.stack?.split('\n')[1] ?? ''}` : String(err);
+          lastError = { message: errMsg, time: new Date().toISOString() };
           app.log.error({ err }, '[Webhook] Failed to process global webhook event');
-        }
-      })();
+        }      })();
     },
   );
 
