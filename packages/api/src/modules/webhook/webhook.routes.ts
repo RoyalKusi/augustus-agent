@@ -18,7 +18,24 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ lastError });
   });
 
-  // Temporary: re-register webhook subscription with Meta (no auth needed for ops)
+  // Temporary: test outbound message send
+  app.post('/webhooks/test-send', async (request, reply) => {
+    try {
+      const { to, message } = request.body as { to?: string; message?: string };
+      if (!to || !message) return reply.status(400).send({ error: 'to and message required' });
+      const { pool } = await import('../../db/client.js');
+      const integration = await pool.query<{ business_id: string }>(
+        `SELECT business_id FROM whatsapp_integrations WHERE status = 'active' LIMIT 1`
+      );
+      if (!integration.rows.length) return reply.status(404).send({ error: 'No active integration' });
+      const businessId = integration.rows[0].business_id;
+      const { sendMessage } = await import('../whatsapp/message-dispatcher.js');
+      const result = await sendMessage(businessId, { type: 'text', to, body: message });
+      return reply.send({ businessId, result });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
   app.post('/webhooks/resubscribe', async (_request, reply) => {
     try {
       const { pool } = await import('../../db/client.js');
