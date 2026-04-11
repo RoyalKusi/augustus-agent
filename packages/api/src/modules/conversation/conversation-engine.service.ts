@@ -46,7 +46,7 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
     if (trainingData.tone_guidelines) parts.push('## Tone Guidelines\n' + trainingData.tone_guidelines);
   }
   if (products.length > 0) {
-    const productList = products.map((p) => '- ' + p.name + ' (ID: ' + p.id + '): ' + (p.description || 'No description') + ' | Price: ' + p.currency + ' ' + p.price.toFixed(2) + ' | Category: ' + (p.category || 'General')).join('\n');
+    const productList = products.map((p) => '- ' + p.name + ' (ID: ' + p.id + '): ' + (p.description || 'No description') + ' | Price: ' + p.currency + ' ' + Number(p.price).toFixed(2) + ' | Category: ' + (p.category || 'General')).join('\n');
     parts.push('## Available Products (in stock)\n' + productList);
   }
   if (contextSummary) parts.push('## Previous Conversation Summary\n' + contextSummary);
@@ -270,8 +270,7 @@ export async function processInboundMessage(msg) {
         price: Number(p.price),
         currency: p.currency,
         imageUrl: p.image_urls?.[0] ?? '',
-      }));
-      await sendMessage(businessId, { type: 'carousel', to: customerWaNumber, products: carouselProducts });
+      }));      await sendMessage(businessId, { type: 'carousel', to: customerWaNumber, products: carouselProducts });
     }
   }
 
