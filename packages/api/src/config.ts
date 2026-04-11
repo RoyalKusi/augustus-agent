@@ -70,7 +70,7 @@ export const config = {
 
   jwt: {
     secret: optional('JWT_SECRET', 'change-me-in-production'),
-    expiresIn: optional('JWT_EXPIRES_IN', '24h'),
+    expiresIn: optional('JWT_EXPIRES_IN', '7d'),
   },
 
   withdrawal: {

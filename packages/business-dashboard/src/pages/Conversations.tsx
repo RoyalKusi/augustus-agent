@@ -35,8 +35,13 @@ export default function Conversations() {
     try {
       const data = await apiFetch<{ conversations: Conversation[] }>('/dashboard/conversations');
       setConversations(data.conversations ?? []);
+      setError(''); // clear any previous error on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load conversations');
+      const msg = err instanceof Error ? err.message : '';
+      // Don't show error for auth failures — apiFetch already redirects to login
+      if (!msg.includes('session') && !msg.includes('expired') && !msg.includes('permission')) {
+        setError(msg || 'Failed to load conversations');
+      }
     } finally {
       setLoading(false);
     }
