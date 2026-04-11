@@ -510,7 +510,12 @@ export async function exchangeEmbeddedSignupCode(
           console.warn('[WhatsApp]', registrationError);
         } else {
           registrationStatus = 'failed';
-          registrationError = regBody?.error?.message ?? `Registration failed (HTTP ${regRes.status})`;
+          const errSubcode = (regBody?.error as { error_subcode?: number })?.error_subcode;
+          if (errSubcode === 2388001) {
+            registrationError = 'This number is still registered to a WhatsApp account. Please delete the WhatsApp account on the device using this number, wait 3 minutes, then reconnect.';
+          } else {
+            registrationError = regBody?.error?.message ?? `Registration failed (HTTP ${regRes.status})`;
+          }
           console.warn('[WhatsApp] Phone number registration failed:', registrationError);
         }
       }

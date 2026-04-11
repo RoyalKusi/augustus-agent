@@ -119,7 +119,7 @@ export default function WhatsAppSetup() {
       } else if (regOk && !webhookOk) {
         setMsg(`Connected: ${result.displayPhoneNumber} — registered for Cloud API. Webhook pending: ${result.webhookError ?? 'retry using Register Webhook button.'}`);
       } else if (!regOk) {
-        setError(`Phone number registration issue: ${result.registrationError ?? 'unknown error'}. Verification status: ${result.codeVerificationStatus}, Name status: ${result.nameStatus}.`);
+        setError(result.registrationError ?? 'Phone number registration failed. Please delete the WhatsApp account on the device using this number, wait 3 minutes, then reconnect.');
       }
     }).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : 'Connection failed.');
