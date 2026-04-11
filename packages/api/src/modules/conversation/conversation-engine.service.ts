@@ -24,8 +24,29 @@ export function filterContextWindow(messages, nowMs, maxMessages = MAX_CONTEXT_M
 }
 
 export async function loadConversationContext(conversationId, nowMs) {
-  const all = await getConversationContext(conversationId);
-  return filterContextWindow(all, nowMs);
+  // Primary: try Redis cache
+  const cached = await getConversationContext(conversationId);
+  if (cached.length > 0) {
+    return filterContextWindow(cached, nowMs);
+  }
+  // Fallback: load from DB messages table when Redis is unavailable
+  try {
+    const { pool } = await import('../../db/client.js');
+    const result = await pool.query(
+      `SELECT direction, content, created_at FROM messages
+       WHERE conversation_id = $1
+       ORDER BY created_at ASC
+       LIMIT $2`,
+      [conversationId, MAX_CONTEXT_MESSAGES]
+    );
+    return result.rows.map((row) => ({
+      role: row.direction === 'inbound' ? 'user' : 'assistant',
+      content: row.content,
+      timestamp: new Date(row.created_at).getTime(),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export function isManualInterventionActive(conversation) {
@@ -43,10 +64,11 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
   parts.push(
     'You are a friendly sales assistant for this brand on WhatsApp. Have natural, human conversations.\n\n' +
     'CONVERSATION STYLE:\n' +
-    '- Greet warmly and ask how you can help — do NOT dump the catalogue immediately\n' +
-    '- Listen to what the customer wants, then suggest relevant products\n' +
+    '- You have the full conversation history below — use it, never repeat yourself\n' +
+    '- As the conversation progresses, get shorter and more direct\n' +
+    '- Greet warmly on first message, then just respond naturally after that\n' +
     '- Only show products (CAROUSEL_TRIGGER) when the customer asks what you sell, asks for recommendations, or shows buying intent\n' +
-    '- Keep replies short — 1 to 2 sentences, like a real chat\n' +
+    '- Keep replies short — 1 to 2 sentences max\n' +
     '- Be natural, not salesy. Let the conversation flow\n' +
     '- When the customer is ready to buy, use PAYMENT_TRIGGER to process the order'
   );
