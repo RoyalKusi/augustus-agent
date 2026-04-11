@@ -258,6 +258,7 @@ export async function sendMessage(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err: unknown) {
     const errorMessage =

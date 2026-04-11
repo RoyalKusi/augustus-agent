@@ -80,6 +80,7 @@ export async function callClaudeHaiku(systemPrompt, contextMessages, userMessage
     method: 'POST',
     headers: { 'x-api-key': config.claude.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
     const errText = await response.text().catch(() => '');

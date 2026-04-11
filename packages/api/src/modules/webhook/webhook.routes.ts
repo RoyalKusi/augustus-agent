@@ -17,6 +17,25 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   app.get('/webhooks/last-error', async (_request, reply) => {
     return reply.send({ lastError });
   });
+
+  // Temporary: re-register webhook subscription with Meta (no auth needed for ops)
+  app.post('/webhooks/resubscribe', async (_request, reply) => {
+    try {
+      const { pool } = await import('../../db/client.js');
+      const { registerWebhook } = await import('../whatsapp/whatsapp-integration.service.js');
+      const integrations = await pool.query<{ business_id: string }>(
+        `SELECT business_id FROM whatsapp_integrations WHERE status = 'active'`
+      );
+      const results = [];
+      for (const row of integrations.rows) {
+        const result = await registerWebhook(row.business_id);
+        results.push({ businessId: row.business_id, ...result });
+      }
+      return reply.send({ results });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
   // Capture raw body for HMAC validation using a scoped preParsing hook.
   // This avoids conflicting with the global JSON body parser.
   app.addHook('preParsing', async (request, _reply, payload) => {
