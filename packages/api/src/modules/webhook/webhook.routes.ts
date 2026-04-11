@@ -18,7 +18,42 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ lastError });
   });
 
-  // Temporary: test outbound message send
+  // Temporary: register phone number for Cloud API
+  app.post('/webhooks/register-phone', async (_request, reply) => {
+    try {
+      const { pool } = await import('../../db/client.js');
+      const { getCredentials } = await import('../whatsapp/whatsapp-integration.service.js');
+      const integrations = await pool.query<{ business_id: string }>(
+        `SELECT business_id FROM whatsapp_integrations WHERE status = 'active'`
+      );
+      const results = [];
+      for (const row of integrations.rows) {
+        const integration = await getCredentials(row.business_id);
+        if (!integration) continue;
+        const graphVersion = config.meta.graphApiVersion;
+        const regRes = await fetch(
+          `https://graph.facebook.com/${graphVersion}/${integration.phoneNumberId}/register`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${integration.accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messaging_product: 'whatsapp', pin: '000000' }),
+            signal: AbortSignal.timeout(15_000),
+          }
+        );
+        const regBody = await regRes.json().catch(() => ({})) as { error?: { message?: string; code?: number }; success?: boolean };
+        results.push({
+          businessId: row.business_id,
+          phoneNumberId: integration.phoneNumberId,
+          status: regRes.status,
+          ok: regRes.ok,
+          body: regBody,
+        });
+      }
+      return reply.send({ results });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
   app.post('/webhooks/test-send', async (request, reply) => {
     try {
       const { to, message } = request.body as { to?: string; message?: string };
