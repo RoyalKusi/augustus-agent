@@ -44,15 +44,7 @@ export default function Conversations() {
   const loadMessages = useCallback(async (convId: string) => {
     try {
       const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
-      setConvMessages((m) => {
-        const prev = m[convId] ?? [];
-        const next = data.messages ?? [];
-        // Only update if there are new messages to avoid unnecessary re-renders
-        if (next.length === prev.length && next[next.length - 1]?.id === prev[prev.length - 1]?.id) {
-          return m;
-        }
-        return { ...m, [convId]: next };
-      });
+      setConvMessages((m) => ({ ...m, [convId]: data.messages ?? [] }));
     } catch {
       // silently ignore
     }

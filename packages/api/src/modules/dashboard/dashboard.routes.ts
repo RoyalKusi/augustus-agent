@@ -57,7 +57,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
          FROM messages
          WHERE conversation_id = $1 AND business_id = $2
          ORDER BY created_at ASC
-         LIMIT 100`,
+         LIMIT 200`,
         [id, request.businessId],
       );
       const messages = result.rows.map((r) => ({
