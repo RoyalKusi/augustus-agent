@@ -22,6 +22,7 @@ const AGENT_ID = 'dashboard-agent';
 export default function Conversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [messages, setMessages] = useState<Record<string, string>>({});
@@ -45,9 +46,7 @@ export default function Conversations() {
     try {
       const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
       setConvMessages((m) => ({ ...m, [convId]: data.messages ?? [] }));
-    } catch {
-      // silently ignore
-    }
+    } catch { /* silently ignore */ }
   }, []);
 
   // Auto-scroll thread to bottom when new messages arrive
@@ -62,12 +61,11 @@ export default function Conversations() {
 
   useEffect(() => {
     load();
-    // Poll conversations list every 10 seconds
     const listInterval = setInterval(load, 10_000);
     return () => clearInterval(listInterval);
   }, [load]);
 
-  // Faster polling (3s) for expanded conversations
+  // 3s polling for expanded conversations
   useEffect(() => {
     const msgInterval = setInterval(() => {
       Object.keys(expanded).forEach((convId) => {
@@ -76,6 +74,18 @@ export default function Conversations() {
     }, 3_000);
     return () => clearInterval(msgInterval);
   }, [expanded, loadMessages]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        load(),
+        ...Object.keys(expanded).filter(id => expanded[id]).map(id => loadMessages(id)),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const toggleExpand = async (conv: Conversation) => {
     const next = !expanded[conv.id];
@@ -120,19 +130,35 @@ export default function Conversations() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, conv: Conversation) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(conv);
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(conv); }
   };
 
   return (
     <div style={{ maxWidth: 800 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h2 style={{ margin: 0 }}>Active Conversations</h2>
-        <button onClick={load} style={{ padding: '6px 14px', background: '#edf2f7', border: '1px solid #cbd5e0', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
-          ↻ Refresh
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          style={{
+            padding: '7px 16px',
+            background: refreshing ? '#bee3f8' : '#3182ce',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: refreshing ? 'not-allowed' : 'pointer',
+            fontSize: 13,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'background 0.15s',
+          }}
+        >
+          <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.7s linear infinite' : 'none' }}>↻</span>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
 
       {error && <p style={errorStyle}>{error}</p>}
@@ -173,10 +199,7 @@ export default function Conversations() {
 
           {expanded[conv.id] && (
             <div style={{ marginTop: 12 }}>
-              <div
-                ref={(el) => { threadRefs.current[conv.id] = el; }}
-                style={threadStyle}
-              >
+              <div ref={(el) => { threadRefs.current[conv.id] = el; }} style={threadStyle}>
                 {(convMessages[conv.id] ?? []).length === 0 ? (
                   <p style={{ color: '#a0aec0', fontSize: 13, textAlign: 'center', margin: '12px 0' }}>No messages yet.</p>
                 ) : (
@@ -192,7 +215,6 @@ export default function Conversations() {
                   ))
                 )}
               </div>
-
               {conv.manualInterventionActive ? (
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <input
