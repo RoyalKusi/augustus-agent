@@ -170,7 +170,7 @@ const start = async () => {
       // Send alert email to ops (best-effort, non-blocking)
       import('./modules/notification/notification.service.js').then(({ sendEmail }) => {
         void sendEmail(
-          'silveraugustus@gmail.com',
+          'silveraugustus12@gmail.com',
           `[Augustus] Scheduled job failed: ${jobName}`,
           `<h3>Scheduled Job Failure</h3><p><strong>Job:</strong> ${jobName}</p><p><strong>Error:</strong> ${msg}</p><p><strong>Time:</strong> ${new Date().toISOString()}</p>`,
           `Scheduled job failed: ${jobName}\nError: ${msg}\nTime: ${new Date().toISOString()}`,
