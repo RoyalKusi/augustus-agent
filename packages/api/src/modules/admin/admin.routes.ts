@@ -354,8 +354,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         );
       }
       await import('../../modules/admin/admin.service.js').then(m => m.logAuditEvent(
-        request.operatorId, 'update_plan_config', 'plan', tier,
-        { priceUsd: body.priceUsd, tokenBudgetUsd: body.tokenBudgetUsd, isAvailable: body.isAvailable },
+        request.operatorId, 'update_plan_config', 'plan', request.operatorId,
+        { tier, priceUsd: body.priceUsd, tokenBudgetUsd: body.tokenBudgetUsd, isAvailable: body.isAvailable },
       ));
       return reply.send({ message: `Plan '${tier}' updated successfully.` });
     } catch (err: unknown) {
