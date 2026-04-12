@@ -437,16 +437,18 @@ export async function getSubscriptionMetrics(): Promise<SubscriptionMetrics> {
   );
 
   // Query 2: MRR from confirmed payments in the current calendar month
+  // subscription_payments has no amount column — join with subscriptions to get price_usd
   const mrrResult = await pool.query<{
     tier: string;
     mrr: string;
   }>(
-    `SELECT tier, COALESCE(SUM(amount), 0) AS mrr
-     FROM subscription_payments
-     WHERE status = 'paid'
-       AND created_at >= date_trunc('month', NOW())
-       AND created_at <  date_trunc('month', NOW()) + INTERVAL '1 month'
-     GROUP BY tier`,
+    `SELECT sp.tier, COALESCE(SUM(s.price_usd), 0) AS mrr
+     FROM subscription_payments sp
+     JOIN subscriptions s ON s.business_id = sp.business_id AND s.plan = sp.tier AND s.status = 'active'
+     WHERE sp.status = 'paid'
+       AND sp.created_at >= date_trunc('month', NOW())
+       AND sp.created_at <  date_trunc('month', NOW()) + INTERVAL '1 month'
+     GROUP BY sp.tier`,
   );
 
   // Merge count and mrr results into perTier
