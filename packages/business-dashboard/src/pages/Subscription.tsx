@@ -31,11 +31,11 @@ const TIER_MAP: Record<string, string> = {
 // Per-tier visual theming
 const TIER_THEME: Record<string, { gradient: string; accent: string; badge: string; icon: JSX.Element }> = {
   silver: {
-    gradient: 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%)',
-    accent: '#718096',
-    badge: '#4a5568',
+    gradient: 'linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%)',
+    accent: '#38a169',
+    badge: '#276749',
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38a169" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
       </svg>
     ),
