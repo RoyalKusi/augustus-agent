@@ -207,7 +207,8 @@ export async function initiatePaynowPayment(
   }
 
   // Build Paynow initiate transaction request (URL-encoded form)
-  const params = new URLSearchParams({
+  // Field order matters for hash computation — must match exactly
+  const fields: Record<string, string> = {
     id: integrationId,
     reference: orderReference,
     amount: amount.toFixed(2),
@@ -216,12 +217,13 @@ export async function initiatePaynowPayment(
     resulturl: resultUrl,
     authemail: email,
     status: 'Message',
-  });
+  };
 
-  // Generate hash: MD5(id + amount + reference + additionalinfo + returnurl + resulturl + integrationKey)
-  const hashInput = `${integrationId}${amount.toFixed(2)}${orderReference}${description}${returnUrl}${resultUrl}${integrationKey}`;
+  // Paynow hash: MD5 of all field values concatenated in order + integrationKey
+  const hashInput = Object.values(fields).join('') + integrationKey;
   const hash = await computeMd5(hashInput);
-  params.set('hash', hash.toUpperCase());
+
+  const params = new URLSearchParams({ ...fields, hash: hash.toUpperCase() });
 
   let response: Response;
   try {
