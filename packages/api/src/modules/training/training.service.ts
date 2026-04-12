@@ -6,6 +6,7 @@
 
 import { pool } from '../../db/client.js';
 import { config } from '../../config.js';
+import { decrypt } from '../../utils/crypto.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -110,12 +111,86 @@ export async function deleteTrainingEntry(
 // ─── Task 11.4: WhatsApp profile update ──────────────────────────────────────
 
 /**
- * Updates the WhatsApp Business profile picture for a business.
- * Best-effort: logs errors but does not throw.
+ * Uploads image bytes to Meta's Resumable Upload API and returns a
+ * profile_picture_handle that can be used with whatsapp_business_profile.
+ *
+ * Flow per Meta docs:
+ *   1. POST /app/uploads  → upload session id
+ *   2. POST /{session_id} → file_handle
+ */
+async function uploadImageToMeta(
+  imageBuffer: Buffer,
+  mimeType: string,
+  accessToken: string,
+): Promise<string> {
+  const { appId, graphApiVersion } = config.meta;
+
+  // Step 1: create upload session
+  const sessionRes = await fetch(
+    `https://graph.facebook.com/${graphApiVersion}/${appId}/uploads?` +
+      new URLSearchParams({
+        file_length: String(imageBuffer.length),
+        file_type: mimeType,
+        access_token: accessToken,
+      }),
+    { method: 'POST' },
+  );
+
+  if (!sessionRes.ok) {
+    const txt = await sessionRes.text().catch(() => '');
+    throw new Error(`Meta upload session failed: ${sessionRes.status} ${txt}`);
+  }
+
+  const { id: uploadSessionId } = (await sessionRes.json()) as { id: string };
+
+  // Step 2: upload the file bytes
+  const uploadRes = await fetch(
+    `https://graph.facebook.com/${graphApiVersion}/${uploadSessionId}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `OAuth ${accessToken}`,
+        file_offset: '0',
+        'Content-Type': mimeType,
+      },
+      body: imageBuffer,
+    },
+  );
+
+  if (!uploadRes.ok) {
+    const txt = await uploadRes.text().catch(() => '');
+    throw new Error(`Meta file upload failed: ${uploadRes.status} ${txt}`);
+  }
+
+  const { h: fileHandle } = (await uploadRes.json()) as { h: string };
+  return fileHandle;
+}
+
+/**
+ * Fetches image bytes from a public URL.
+ */
+async function fetchImageBuffer(url: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch logo from ${url}: ${res.status}`);
+  const mimeType = res.headers.get('content-type') ?? 'image/jpeg';
+  const arrayBuffer = await res.arrayBuffer();
+  return { buffer: Buffer.from(arrayBuffer), mimeType };
+}
+
+/**
+ * Syncs the business logo to the connected WhatsApp Business phone number profile photo.
+ *
+ * Two-step Meta API flow:
+ *   1. Upload image bytes via Resumable Upload API → get profile_picture_handle
+ *   2. POST /{phoneNumberId}/whatsapp_business_profile with the handle
+ *
+ * Best-effort: logs errors but does not throw so it never blocks the upload response.
  */
 export async function updateWhatsAppProfile(
   businessId: string,
   logoUrl: string,
+  imageBuffer?: Buffer,
+  mimeType?: string,
 ): Promise<void> {
   try {
     const result = await pool.query<{
@@ -130,30 +205,51 @@ export async function updateWhatsAppProfile(
     );
 
     if (result.rows.length === 0) {
-      console.warn(`[TrainingService] No active WhatsApp integration for business ${businessId}`);
+      console.warn(`[WhatsAppProfile] No active WhatsApp integration for business ${businessId} — skipping profile photo sync`);
       return;
     }
 
     const { phone_number_id, access_token_encrypted } = result.rows[0];
-    const graphApiVersion = config.meta.graphApiVersion;
-    const url = `https://graph.facebook.com/${graphApiVersion}/${phone_number_id}/whatsapp_business_profile`;
+    // Decrypt the stored token before using it
+    const accessToken = decrypt(access_token_encrypted);
+    const { graphApiVersion } = config.meta;
 
-    const response = await fetch(url, {
+    // Step 1: use provided buffer or fetch the logo bytes from S3/CDN
+    let buf: Buffer;
+    let mime: string;
+    if (imageBuffer && mimeType) {
+      buf = imageBuffer;
+      mime = mimeType;
+    } else {
+      const fetched = await fetchImageBuffer(logoUrl);
+      buf = fetched.buffer;
+      mime = fetched.mimeType;
+    }
+
+    // Step 2: upload to Meta Resumable Upload API → get handle
+    const profilePictureHandle = await uploadImageToMeta(buf, mime, accessToken);
+
+    // Step 3: set the handle on the WhatsApp Business profile
+    const profileUrl = `https://graph.facebook.com/${graphApiVersion}/${phone_number_id}/whatsapp_business_profile`;
+    const profileRes = await fetch(profileUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${access_token_encrypted}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ profile_picture_handle: logoUrl }),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        profile_picture_handle: profilePictureHandle,
+      }),
     });
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      console.error(
-        `[TrainingService] WhatsApp profile update failed for business ${businessId}: ${response.status} ${errText}`,
-      );
+    if (!profileRes.ok) {
+      const errText = await profileRes.text().catch(() => '');
+      console.error(`[WhatsAppProfile] Profile update failed for business ${businessId}: ${profileRes.status} ${errText}`);
+    } else {
+      console.info(`[WhatsAppProfile] Profile photo synced for business ${businessId}`);
     }
   } catch (err) {
-    console.error(`[TrainingService] updateWhatsAppProfile error for business ${businessId}:`, err);
+    console.error(`[WhatsAppProfile] updateWhatsAppProfile error for business ${businessId}:`, err);
   }
 }

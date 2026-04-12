@@ -77,8 +77,8 @@ export async function trainingRoutes(app: FastifyInstance): Promise<void> {
         fileSizeBytes: fileBuffer.length,
       });
 
-      if (type === 'logo' && fileUrl) {
-        void updateWhatsAppProfile(businessId, fileUrl);
+      if (type === 'logo' && fileBuffer) {
+        void updateWhatsAppProfile(businessId, fileUrl ?? '', fileBuffer, mimetype);
       }
 
       return reply.status(201).send(entry);
