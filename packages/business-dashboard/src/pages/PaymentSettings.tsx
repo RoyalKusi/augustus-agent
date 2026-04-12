@@ -84,8 +84,9 @@ export default function PaymentSettings() {
   const [enabled, setEnabled] = useState(true);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
 
-  // Show methods section if: in-chat payments disabled OR redirected from revenue page
-  const showMethods = !enabled || fromRevenue;
+  // Always show methods section — businesses need to manage payment methods for withdrawals
+  // regardless of whether in-chat payments are enabled
+  const showMethods = true;
 
   useEffect(() => {
     apiFetch<PaymentSettingsData>('/payments/settings')
@@ -125,7 +126,8 @@ export default function PaymentSettings() {
         method: 'PUT',
         body: JSON.stringify({
           inChatPaymentsEnabled: enabled,
-          externalPaymentDetails: enabled ? null : methodsToDetails(methods),
+          // Always save external payment details — used for withdrawals even when Paynow is enabled
+          externalPaymentDetails: methods.length > 0 ? methodsToDetails(methods) : null,
         }),
       });
       setSuccess(true);
@@ -175,7 +177,9 @@ export default function PaymentSettings() {
             <button onClick={addMethod} style={addBtn}>+ Add Method</button>
           </div>
           <p style={{ margin: '0 0 16px', color: '#718096', fontSize: 13 }}>
-            Add the payment methods customers can use to pay you. These will appear on their invoice.
+            {enabled
+              ? 'Add your payout methods for withdrawals. These are also shown to customers if Paynow is unavailable.'
+              : 'Add the payment methods customers can use to pay you. These will appear on their invoice.'}
           </p>
 
           {methods.length === 0 && (
