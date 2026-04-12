@@ -234,7 +234,7 @@ export async function getOrdersSummary(
   const orders: OrderSummaryItem[] = result.rows.map((row) => ({
     id: row.id,
     orderReference: row.order_reference,
-    customerWaNumber: maskWaNumber(row.customer_wa_number),
+    customerWaNumber: row.customer_wa_number,  // full number — business sees their own customers
     status: row.status,
     totalAmount: Number(row.total_amount),
     currency: row.currency,
@@ -379,7 +379,7 @@ export async function updateOrderStatus(
   return {
     id: row.id,
     orderReference: row.order_reference,
-    customerWaNumber: maskWaNumber(row.customer_wa_number),
+    customerWaNumber: row.customer_wa_number,  // full number for business owner
     status: row.status,
     totalAmount: Number(row.total_amount),
     currency: row.currency,
