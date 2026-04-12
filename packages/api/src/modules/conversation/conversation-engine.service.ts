@@ -171,8 +171,8 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
   }
 
   const triggerInstructions = inChatPaymentsEnabled
-    ? 'Show products (when relevant): CAROUSEL_TRIGGER:[id1,id2,...]\nProcess a confirmed purchase: PAYMENT_TRIGGER:{"items":[{"product_id":"ID","quantity":1}],"total":0.00,"currency":"USD"}'
-    : 'Show products (when relevant): CAROUSEL_TRIGGER:[id1,id2,...]\nProcess a confirmed order: PAYMENT_TRIGGER:{"items":[{"product_id":"ID","quantity":1}],"total":0.00,"currency":"USD"}';
+    ? 'Show products (when relevant): CAROUSEL_TRIGGER:[id1,id2,...]\nProcess a confirmed purchase (sends a Paynow payment link): PAYMENT_TRIGGER:{"items":[{"product_id":"ID","quantity":1}],"total":0.00,"currency":"USD"}'
+    : 'Show products (when relevant): CAROUSEL_TRIGGER:[id1,id2,...]\nProcess a confirmed order (sends an invoice with manual payment instructions — NO online payment link): PAYMENT_TRIGGER:{"items":[{"product_id":"ID","quantity":1}],"total":0.00,"currency":"USD"}\nIMPORTANT: In-chat payments are DISABLED for this business. PAYMENT_TRIGGER will send an invoice with bank/payment details for the customer to pay manually. Do NOT mention Paynow or online payment links.';
 
   parts.push('## Special Actions (put on its own line when used)\n' + triggerInstructions);
 
