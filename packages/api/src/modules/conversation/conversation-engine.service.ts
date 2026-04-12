@@ -473,15 +473,21 @@ export async function processInboundMessage(msg) {
       const items = orderDetails.items ?? [];
 
       if (items.length > 0) {
-        // Check if there's already a pending order for this conversation to avoid duplicate links
-        const existingOrder = await pool.query(
+        // If there's already a pending order for this conversation, expire it so the
+        // customer can replace it with a new one (e.g. "change my order to X instead")
+        const existingOrder = await pool.query<{ id: string }>(
           `SELECT id FROM orders WHERE conversation_id = $1 AND payment_status = 'pending' AND expires_at > NOW() LIMIT 1`,
           [conversationId]
         );
         if (existingOrder.rows.length > 0) {
-          // Already have a pending order — don't send another link, just acknowledge
-          console.info('[ConversationEngine] Pending order already exists, skipping duplicate payment dispatch');
-        } else {
+          // Cancel the old pending order so a fresh one can be created
+          await pool.query(
+            `UPDATE orders SET payment_status = 'failed', updated_at = NOW() WHERE id = $1`,
+            [existingOrder.rows[0].id]
+          );
+          console.info('[ConversationEngine] Cancelled previous pending order to allow replacement:', existingOrder.rows[0].id);
+        }
+        {
         if (settings?.in_chat_payments_enabled) {
           // In-chat Paynow payment flow
           const { generatePaynowLink } = await import('../payment/payment.service.js');
@@ -567,9 +573,8 @@ export async function processInboundMessage(msg) {
             }
           }
         } else if (settings?.external_payment_details) {
-          // External payment flow — send invoice with external payment details
+          // External payment flow — create an order record then send invoice
           const { buildInvoiceMessage } = await import('../payment/payment.service.js');
-          const orderRef = `ORD-${Date.now().toString(36).toUpperCase()}`;
           const orderItems = [];
           for (const item of items) {
             const prodResult = await pool.query<{ name: string; price: string; currency: string }>(
@@ -587,8 +592,32 @@ export async function processInboundMessage(msg) {
             }
           }
           if (orderItems.length > 0) {
-            const currency = orderDetails.currency ?? 'USD';
+            const currency = orderDetails.currency ?? (orderItems[0] ? await pool.query<{ currency: string }>('SELECT currency FROM products WHERE id = $1', [orderItems[0].productId]).then(r => r.rows[0]?.currency ?? 'USD') : 'USD');
             const total = orderItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+            // Generate order reference and persist the order as pending_external_payment
+            const { randomUUID } = await import('crypto');
+            const ts = Date.now().toString(36).toUpperCase();
+            const rand = randomUUID().slice(0, 4).toUpperCase();
+            const orderRef = `ORD-${ts}-${rand}`;
+            const orderResult = await pool.query<{ id: string }>(
+              `INSERT INTO orders
+                 (business_id, conversation_id, customer_phone, customer_wa_number, order_reference,
+                  total_amount, currency, payment_status, expires_at)
+               VALUES ($1, $2, $3, $3, $4, $5, $6, 'pending_external_payment',
+                       NOW() + INTERVAL '24 hours')
+               RETURNING id`,
+              [businessId, conversationId ?? null, customerWaNumber, orderRef, total, currency]
+            );
+            const orderId = orderResult.rows[0]?.id;
+            if (orderId) {
+              for (const oi of orderItems) {
+                await pool.query(
+                  `INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, currency)
+                   VALUES ($1, $2, $3, $4, $5, $6)`,
+                  [orderId, oi.productId, oi.productName, oi.quantity, oi.unitPrice, currency]
+                );
+              }
+            }
             const invoiceMsg = buildInvoiceMessage({
               orderReference: orderRef,
               items: orderItems,
