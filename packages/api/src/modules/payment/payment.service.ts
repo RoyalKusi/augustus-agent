@@ -152,9 +152,9 @@ export async function generatePaynowLink(
     // Insert order items
     for (const item of items) {
       await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [orderRow.id, item.productId, item.productName || 'Product', item.quantity, item.unitPrice],
+        `INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, currency)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [orderRow.id, item.productId, item.productName || 'Product', item.quantity, item.unitPrice, currency],
       );
     }
 
