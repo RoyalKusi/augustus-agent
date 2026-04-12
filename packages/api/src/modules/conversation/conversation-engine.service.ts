@@ -342,7 +342,18 @@ export async function processInboundMessage(msg) {
   const conversation = await getOrCreateConversation(businessId, customerWaNumber);
   const conversationId = conversation.id;
 
-  if (isManualInterventionActive(conversation)) return { dispatched: false, skippedManualIntervention: true };
+  if (isManualInterventionActive(conversation)) {
+    // Still persist the inbound message so the business dashboard shows it in real-time
+    await pool.query(
+      "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, meta_message_id, created_at) VALUES ($1, $2, 'inbound', 'text', $3, $4, NOW()) ON CONFLICT (meta_message_id) DO NOTHING",
+      [conversationId, businessId, messageText, messageId || null]
+    );
+    await pool.query(
+      'UPDATE conversations SET message_count = message_count + 1, updated_at = NOW() WHERE id = $1',
+      [conversationId]
+    );
+    return { dispatched: false, skippedManualIntervention: true };
+  }
 
   const budgetAllowed = await isBudgetAllowed(businessId);
   if (!budgetAllowed) {
