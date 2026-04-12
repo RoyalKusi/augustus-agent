@@ -135,7 +135,9 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
     '- Only use CAROUSEL_TRIGGER when the customer asks to see products or shows buying intent\n' +
     '- Keep replies to 1-2 sentences — natural chat, not a sales pitch\n' +
     '- Use the conversation history — never repeat yourself\n' +
-    '- Match the customer\'s energy: casual if they\'re casual, direct if they\'re direct'
+    '- Match the customer\'s energy: casual if they\'re casual, direct if they\'re direct\n' +
+    '- If a payment link or invoice was already sent in this conversation, do NOT send it again unless the customer explicitly asks\n' +
+    '- If the customer says "ok", "thanks", "got it" or similar — just respond naturally, do not resend anything'
   );
 
   if (trainingData) {
@@ -464,6 +466,15 @@ export async function processInboundMessage(msg) {
       const items = orderDetails.items ?? [];
 
       if (items.length > 0) {
+        // Check if there's already a pending order for this conversation to avoid duplicate links
+        const existingOrder = await pool.query(
+          `SELECT id FROM orders WHERE conversation_id = $1 AND payment_status = 'pending' AND expires_at > NOW() LIMIT 1`,
+          [conversationId]
+        );
+        if (existingOrder.rows.length > 0) {
+          // Already have a pending order — don't send another link, just acknowledge
+          console.info('[ConversationEngine] Pending order already exists, skipping duplicate payment dispatch');
+        } else {
         if (settings?.in_chat_payments_enabled) {
           // In-chat Paynow payment flow
           const { generatePaynowLink } = await import('../payment/payment.service.js');
@@ -588,6 +599,7 @@ export async function processInboundMessage(msg) {
             body: `To complete your order, please contact us directly and we'll process it for you.`,
           });
         }
+        } // end else (no existing pending order)
       }
     } catch (err) {
       const paymentErrMsg = err instanceof Error ? err.message : String(err);

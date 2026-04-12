@@ -201,11 +201,19 @@ const INTENT_INSTRUCTIONS: Record<string, string> = {
     'Politely redirect in one sentence, then ask what they are looking for.',
 };
 
+// ── Acknowledgment patterns — these should NOT trigger ready_to_buy ──────────
+
+const ACKNOWLEDGMENT_PATTERNS = [
+  /^(ok|okay|ok\s*thanks?|thanks?|thank\s*you|thx|ty|got\s*it|noted|sure|alright|fine|cool|great|nice|good|perfect|awesome|understood|received|seen|read)\.?$/i,
+  /^(yes|yep|yeah|yah|yup|aye|affirmative)\.?$/i,
+  /^(no|nope|nah|not\s*now|maybe\s*later|later|not\s*yet)\.?$/i,
+  /^(lol|haha|😊|👍|🙏|✅|👌|😂|❤️|🔥)$/i,
+];
+
 // ── Buying signal keywords (any match = ready_to_buy override) ────────────────
 
 const BUYING_SIGNAL_WORDS = [
   /\b(want|need|take|buy|order|get|purchase|grab|pick|choose|select|have|give\s*me)\b/i,
-  /\b(yes|yep|yeah|yah|sure|ok|okay|alright|fine|deal|done|sold|perfect|great)\b/i,
   /\b(send|pay|payment|link|invoice|checkout|proceed|confirm|place)\b/i,
   /\b(one|two|three|four|five|\d+)\s*(pair|piece|unit|item|set|of\s*them)?\b/i,
   /\b(i'?ll|i\s*will|let'?s|go\s*ahead|do\s*it|make\s*it\s*happen)\b/i,
@@ -223,7 +231,17 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     return { intent: 'complaint', confidence: 'high', instruction: INTENT_INSTRUCTIONS.complaint };
   }
 
-  // PRIORITY 2: Greetings — never treat as buying signal
+  // PRIORITY 2: Acknowledgments — short responses after a transaction, just continue naturally
+  const isAcknowledgment = ACKNOWLEDGMENT_PATTERNS.some((p) => p.test(text));
+  if (isAcknowledgment) {
+    return {
+      intent: 'product_inquiry',
+      confidence: 'low',
+      instruction: 'Customer is acknowledging a previous message. Respond naturally and briefly. Do NOT resend payment links, invoices, or product catalogues unless explicitly asked.',
+    };
+  }
+
+  // PRIORITY 3: Greetings — never treat as buying signal
   const greetingScore = score(text, GREETING_PATTERNS);
   const isShortMessage = text.length <= 15;
   if (greetingScore >= 1 || (isShortMessage && /^(hi|hey|hello|yo|sup|hie|howdy|morning|evening|afternoon|night)\b/i.test(text))) {
@@ -238,13 +256,13 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     return { intent: 'greeting', confidence: 'high', instruction: INTENT_INSTRUCTIONS.greeting };
   }
 
-  // PRIORITY 3: Explicit ready_to_buy patterns (must be more than just "yes" or "ok")
+  // PRIORITY 4: Explicit ready_to_buy patterns (must be more than just "yes" or "ok")
   const readyScore = score(text, READY_TO_BUY_PATTERNS);
   if (readyScore >= 1 && text.length > 5) {
     return { intent: 'ready_to_buy', confidence: 'high', instruction: INTENT_INSTRUCTIONS.ready_to_buy };
   }
 
-  // PRIORITY 4: Buying signal — only if message has product context (not just "yes" alone)
+  // PRIORITY 5: Buying signal — only if message has product context (not just "yes" alone)
   const hasBuyingSignal = BUYING_SIGNAL_WORDS.some((p) => p.test(lower));
   const hasProductContext = score(text, PRODUCT_INQUIRY_PATTERNS) >= 1 || text.length > 10;
   if (hasBuyingSignal && hasProductContext) {
@@ -256,7 +274,7 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     }
   }
 
-  // PRIORITY 5: Score remaining intents
+  // PRIORITY 6: Score remaining intents
   const scores: Record<string, number> = {
     product_inquiry: score(text, PRODUCT_INQUIRY_PATTERNS),
     price_question: score(text, PRICE_QUESTION_PATTERNS),
@@ -288,5 +306,6 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     instruction: INTENT_INSTRUCTIONS[topIntent],
   };
 }
+
 
 
