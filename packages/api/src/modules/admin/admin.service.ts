@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { canSuspend, canReactivate, isPlatformCostAlertTriggered } from './admin.pure.js';
+import { sendEmail } from '../notification/notification.service.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,16 +60,20 @@ export async function sendLoginOtp(operatorId: string, email: string): Promise<v
     [hash, expiresAt, operatorId],
   );
 
-  const { sendEmail } = await import('../../modules/notification/notification.service.js');
-  await sendEmail(
-    email,
-    'Augustus Admin — Login Verification Code',
-    `<h2>Your Login Code</h2>
-     <p>Use the following code to complete your login. It expires in <strong>10 minutes</strong>.</p>
-     <div style="font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;background:#f7fafc;border-radius:8px;text-align:center;">${code}</div>
-     <p style="color:#718096;font-size:13px;">If you did not attempt to log in, please change your password immediately.</p>`,
-    `Your Augustus admin login code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not attempt to log in, change your password immediately.`,
-  );
+  try {
+    await sendEmail(
+      email,
+      'Augustus Admin — Login Verification Code',
+      `<h2>Your Login Code</h2>
+       <p>Use the following code to complete your login. It expires in <strong>10 minutes</strong>.</p>
+       <div style="font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;background:#f7fafc;border-radius:8px;text-align:center;">${code}</div>
+       <p style="color:#718096;font-size:13px;">If you did not attempt to log in, please change your password immediately.</p>`,
+      `Your Augustus admin login code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not attempt to log in, change your password immediately.`,
+    );
+  } catch (emailErr) {
+    console.error('[AdminOTP] Failed to send OTP email to', email, ':', emailErr);
+    throw new Error('Failed to send verification code. Please try again.');
+  }
 }
 
 /**

@@ -16,12 +16,9 @@ export async function sendEmail(
 ): Promise<void> {
   const { provider, apiKey, fromAddress, fromName } = config.email;
 
-  // No API key configured — skip silently in production, log in development
+  // No API key configured — throw so callers know email failed
   if (!apiKey) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[Notification] No email API key — skipping email to ${to}: ${subject}`);
-    }
-    return;
+    throw new Error('Email API key not configured. Set EMAIL_API_KEY environment variable.');
   }
 
   if (provider === 'sendgrid') {
