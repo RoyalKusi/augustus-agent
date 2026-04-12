@@ -328,3 +328,83 @@ export async function getSubscriptionById(id: string): Promise<Subscription | nu
   );
   return result.rows.length > 0 ? rowToSubscription(result.rows[0]) : null;
 }
+
+// ─── Scheduled: Apply pending downgrades ─────────────────────────────────────
+
+/**
+ * Apply any pending downgrades whose renewal_date has passed.
+ * Called by the daily job runner.
+ */
+export async function applyPendingDowngrades(): Promise<void> {
+  const result = await pool.query<{
+    id: string;
+    business_id: string;
+    pending_downgrade_tier: PlanTier;
+    email: string;
+  }>(
+    `SELECT s.id, s.business_id, s.pending_downgrade_tier, b.email
+     FROM subscriptions s
+     JOIN businesses b ON b.id = s.business_id
+     WHERE s.status = 'active'
+       AND s.pending_downgrade_tier IS NOT NULL
+       AND s.renewal_date IS NOT NULL
+       AND s.renewal_date <= CURRENT_DATE`,
+  );
+
+  for (const row of result.rows) {
+    const newPlan = getPlan(row.pending_downgrade_tier);
+    const now = new Date();
+    const newRenewal = new Date(now);
+    newRenewal.setMonth(newRenewal.getMonth() + 1);
+
+    await pool.query(
+      `UPDATE subscriptions
+       SET plan = $1, price_usd = $2, pending_downgrade_tier = NULL,
+           renewal_date = $3, billing_cycle_start = $4, updated_at = NOW()
+       WHERE id = $5`,
+      [row.pending_downgrade_tier, newPlan.priceUsd, newRenewal, now, row.id],
+    );
+
+    console.info(`[Subscription] Applied downgrade to ${row.pending_downgrade_tier} for business ${row.business_id}`);
+  }
+}
+
+// ─── Scheduled: Retry failed payments ────────────────────────────────────────
+
+/**
+ * Retry subscription payments that are past their next_retry_at time.
+ * Called by the daily job runner.
+ */
+export async function retryFailedPayments(): Promise<void> {
+  const result = await pool.query<{
+    id: string;
+    business_id: string;
+    plan: PlanTier;
+    failed_payment_attempts: number;
+    email: string;
+  }>(
+    `SELECT s.id, s.business_id, s.plan, s.failed_payment_attempts, b.email
+     FROM subscriptions s
+     JOIN businesses b ON b.id = s.business_id
+     WHERE s.status = 'active'
+       AND s.next_retry_at IS NOT NULL
+       AND s.next_retry_at <= NOW()
+       AND s.failed_payment_attempts < 2`,
+  );
+
+  for (const row of result.rows) {
+    // Clear the retry timestamp so it doesn't fire again immediately
+    await pool.query(
+      `UPDATE subscriptions SET next_retry_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [row.id],
+    );
+
+    // Log the retry attempt — actual Paynow charge happens when renewal is implemented
+    console.info(`[Subscription] Retry payment due for business ${row.business_id} (attempt ${row.failed_payment_attempts + 1})`);
+
+    // If this is the second attempt and it still hasn't been paid, suspend
+    if (row.failed_payment_attempts >= 1) {
+      await handleFailedRenewalPayment(row.id);
+    }
+  }
+}

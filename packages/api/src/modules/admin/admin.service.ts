@@ -220,7 +220,9 @@ export async function listBusinesses(filters: {
   search?: string;
   status?: string;
   plan?: string;
-}): Promise<{ businesses: BusinessListItem[]; total: number }> {
+  page?: number;
+  limit?: number;
+}): Promise<{ businesses: BusinessListItem[]; total: number; page: number; totalPages: number }> {
   const conditions: string[] = [];
   const params: unknown[] = [];
   let idx = 1;
@@ -237,15 +239,23 @@ export async function listBusinesses(filters: {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  let planJoin = '';
+  const planJoin = `LEFT JOIN subscriptions s ON s.business_id = b.id AND s.status = 'active'`;
   let planCondition = '';
   if (filters.plan) {
-    planJoin = `LEFT JOIN subscriptions s ON s.business_id = b.id AND s.status = 'active'`;
     planCondition = `AND s.plan = $${idx++}`;
     params.push(filters.plan);
-  } else {
-    planJoin = `LEFT JOIN subscriptions s ON s.business_id = b.id AND s.status = 'active'`;
   }
+
+  const countResult = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM businesses b ${planJoin} ${where} ${planCondition}`,
+    params,
+  );
+  const total = Number(countResult.rows[0]?.count ?? 0);
+
+  const page = Math.max(1, filters.page ?? 1);
+  const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
+  const offset = (page - 1) * limit;
+  const totalPages = Math.ceil(total / limit);
 
   const query = `
     SELECT b.id, b.name, b.email, b.status, s.plan AS plan, b.created_at
@@ -254,7 +264,9 @@ export async function listBusinesses(filters: {
     ${where}
     ${planCondition}
     ORDER BY b.created_at DESC
+    LIMIT $${idx++} OFFSET $${idx++}
   `;
+  params.push(limit, offset);
 
   const result = await pool.query<{
     id: string;
@@ -274,7 +286,7 @@ export async function listBusinesses(filters: {
     createdAt: row.created_at.toISOString(),
   }));
 
-  return { businesses, total: businesses.length };
+  return { businesses, total, page, totalPages };
 }
 
 // ─── Task 13.3: Business suspension (Property 36) ────────────────────────────

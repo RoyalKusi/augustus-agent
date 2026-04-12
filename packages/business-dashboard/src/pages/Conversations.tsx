@@ -66,17 +66,17 @@ export default function Conversations() {
 
   useEffect(() => {
     load();
-    const listInterval = setInterval(load, 10_000);
+    const listInterval = setInterval(load, 30_000); // reduced from 10s — less server load
     return () => clearInterval(listInterval);
   }, [load]);
 
-  // 3s polling for expanded conversations
+  // 10s polling for expanded conversations (reduced from 3s)
   useEffect(() => {
     const msgInterval = setInterval(() => {
       Object.keys(expanded).forEach((convId) => {
         if (expanded[convId]) loadMessages(convId);
       });
-    }, 3_000);
+    }, 10_000);
     return () => clearInterval(msgInterval);
   }, [expanded, loadMessages]);
 
@@ -167,7 +167,13 @@ export default function Conversations() {
       </div>
 
       {error && <p style={errorStyle}>{error}</p>}
-      {actionError && <p style={errorStyle}>{actionError}</p>}
+      {actionError && (
+        <div style={{ ...errorStyle, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {actionError}
+          <button onClick={() => setActionError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#c53030', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
       {loading && <p style={{ color: '#718096' }}>Loading conversations…</p>}
 
       {!loading && conversations.length === 0 && (

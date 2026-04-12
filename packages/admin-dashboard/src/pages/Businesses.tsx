@@ -11,17 +11,27 @@ interface Business {
   createdAt?: string;
 }
 
+interface BusinessesResponse {
+  businesses: Business[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 export default function Businesses() {
   const navigate = useNavigate();
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
 
-  const load = async () => {
+  const load = async (p = page) => {
     setLoading(true);
     setError('');
     try {
@@ -29,11 +39,13 @@ export default function Businesses() {
       if (search) params.set('search', search);
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (planFilter !== 'all') params.set('plan', planFilter);
-      const qs = params.toString();
-      const data = await apiFetch<{ businesses: Business[]; total: number }>(
-        `/admin/businesses${qs ? `?${qs}` : ''}`
-      );
+      params.set('page', String(p));
+      params.set('limit', '50');
+      const data = await apiFetch<BusinessesResponse>(`/admin/businesses?${params.toString()}`);
       setBusinesses(data.businesses);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
+      setPage(data.page);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load businesses');
     } finally {
@@ -41,18 +53,19 @@ export default function Businesses() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    load();
+    setPage(1);
+    load(1);
   };
 
   const suspend = async (id: string) => {
     setActionError('');
     try {
       await apiFetch(`/admin/businesses/${id}/suspend`, { method: 'POST' });
-      await load();
+      await load(page);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed');
     }
@@ -62,7 +75,7 @@ export default function Businesses() {
     setActionError('');
     try {
       await apiFetch(`/admin/businesses/${id}/reactivate`, { method: 'POST' });
-      await load();
+      await load(page);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed');
     }
@@ -70,7 +83,10 @@ export default function Businesses() {
 
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Business Accounts</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <h2 style={{ marginTop: 0 }}>Business Accounts</h2>
+        <span style={{ fontSize: 13, color: '#718096' }}>{total} total</span>
+      </div>
 
       <form onSubmit={handleSearch} style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <input
@@ -155,6 +171,23 @@ export default function Businesses() {
             )}
           </tbody>
         </table>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, justifyContent: 'center' }}>
+          <button
+            onClick={() => { setPage(p => p - 1); load(page - 1); }}
+            disabled={page <= 1 || loading}
+            style={{ ...btnSecondary, opacity: page <= 1 ? 0.4 : 1 }}
+          >← Prev</button>
+          <span style={{ fontSize: 13, color: '#718096' }}>Page {page} of {totalPages}</span>
+          <button
+            onClick={() => { setPage(p => p + 1); load(page + 1); }}
+            disabled={page >= totalPages || loading}
+            style={{ ...btnSecondary, opacity: page >= totalPages ? 0.4 : 1 }}
+          >Next →</button>
+        </div>
       )}
     </div>
   );

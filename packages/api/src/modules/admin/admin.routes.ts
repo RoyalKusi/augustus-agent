@@ -77,13 +77,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   // GET /admin/businesses
   app.get('/admin/businesses', { preHandler: authenticateOperator }, async (request, reply) => {
-    const { search, status, plan } = request.query as {
+    const { search, status, plan, page, limit } = request.query as {
       search?: string;
       status?: string;
       plan?: string;
+      page?: string;
+      limit?: string;
     };
     try {
-      const result = await listBusinesses({ search, status, plan });
+      const result = await listBusinesses({
+        search, status, plan,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 50,
+      });
       return reply.send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to list businesses.';

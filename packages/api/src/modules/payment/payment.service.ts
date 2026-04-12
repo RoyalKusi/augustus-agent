@@ -550,16 +550,18 @@ export async function confirmPayment(orderId: string, paynowReference: string): 
       );
     }
 
-    // Task 9.7: upsert revenue balance — update both column sets for compatibility
+    // Task 9.7: upsert revenue balance — canonical columns are available_usd/lifetime_usd
+    // available_balance and total_lifetime_revenue are legacy aliases kept in sync
     await client.query(
-      `INSERT INTO revenue_balances (business_id, available_balance, total_lifetime_revenue, available_usd, lifetime_usd, updated_at)
+      `INSERT INTO revenue_balances (business_id, available_usd, lifetime_usd, available_balance, total_lifetime_revenue, updated_at)
        VALUES ($1, $2, $2, $2, $2, NOW())
        ON CONFLICT (business_id) DO UPDATE
-         SET available_balance      = revenue_balances.available_balance + $2,
-             total_lifetime_revenue = revenue_balances.total_lifetime_revenue + $2,
-             available_usd          = revenue_balances.available_usd + $2,
+         SET available_usd          = revenue_balances.available_usd + $2,
              lifetime_usd           = revenue_balances.lifetime_usd + $2,
-             updated_at             = NOW()`,
+             available_balance      = revenue_balances.available_usd + $2,
+             total_lifetime_revenue = revenue_balances.lifetime_usd + $2,
+             updated_at             = NOW()
+       RETURNING available_usd`,
       [order.business_id, totalAmount],
     );
 
