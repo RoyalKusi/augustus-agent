@@ -25,6 +25,7 @@ import {
   listAllSupportTickets,
   updateSupportTicketStatus,
   logAuditEvent,
+  sendLoginOtp,
 } from './admin.service.js';
 import { pool } from '../../db/client.js';
 
@@ -47,6 +48,24 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       const message = err instanceof Error ? err.message : 'Login failed.';
       const status = message.includes('Too many') ? 429 : 401;
       return reply.status(status).send({ error: message });
+    }
+  });
+
+  // POST /admin/auth/resend-otp — resend OTP using operatorId (no credential re-check)
+  app.post('/admin/auth/resend-otp', async (request, reply) => {
+    const { operatorId } = request.body as { operatorId?: string };
+    if (!operatorId) return reply.status(400).send({ error: 'operatorId is required.' });
+    try {
+      const result = await pool.query<{ email: string }>(
+        `SELECT email FROM operators WHERE id = $1`,
+        [operatorId],
+      );
+      if (!result.rows[0]) return reply.status(404).send({ error: 'Operator not found.' });
+      await sendLoginOtp(operatorId, result.rows[0].email);
+      return reply.send({ message: 'Code resent.' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to resend code.';
+      return reply.status(500).send({ error: message });
     }
   });
 

@@ -10,6 +10,7 @@ export default function Login() {
   const [operatorId, setOperatorId] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleStep1 = async (e: React.FormEvent) => {
@@ -57,13 +58,15 @@ export default function Login() {
 
   const resendOtp = async () => {
     setError('');
+    setSuccess('');
     setLoading(true);
     try {
-      await apiFetch('/admin/auth/login', {
+      await apiFetch('/admin/auth/resend-otp', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ operatorId }),
       });
       setOtpCode('');
+      setSuccess('A new code has been sent.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend code');
     } finally {
@@ -141,6 +144,7 @@ export default function Login() {
               <p style={{ margin: '6px 0 0', fontSize: 11, color: '#a0aec0' }}>Code expires in 10 minutes.</p>
             </div>
             {error && <p style={{ color: '#c53030', fontSize: 13, margin: '0 0 12px', background: '#fff5f5', padding: '8px 10px', borderRadius: 6, border: '1px solid #feb2b2' }}>{error}</p>}
+            {success && <p style={{ color: '#276749', fontSize: 13, margin: '0 0 12px', background: '#f0fff4', padding: '8px 10px', borderRadius: 6, border: '1px solid #9ae6b4' }}>{success}</p>}
             <button
               type="submit"
               disabled={loading || otpCode.length !== 6}
