@@ -71,6 +71,33 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
+
+  // Temporary: test Paynow link generation directly
+  app.post('/webhooks/test-paynow', async (_request, reply) => {
+    try {
+      const { pool } = await import('../../db/client.js');
+      const integration = await pool.query<{ business_id: string }>(
+        `SELECT business_id FROM whatsapp_integrations WHERE status = 'active' LIMIT 1`
+      );
+      if (!integration.rows.length) return reply.status(404).send({ error: 'No active integration' });
+      const businessId = integration.rows[0].business_id;
+      const product = await pool.query<{ id: string; name: string; price: string; currency: string }>(
+        `SELECT id, name, price, currency FROM products WHERE business_id = $1 AND is_active = TRUE AND stock_quantity > 0 LIMIT 1`,
+        [businessId]
+      );
+      if (!product.rows.length) return reply.status(404).send({ error: 'No active products' });
+      const p = product.rows[0];
+      const { generatePaynowLink } = await import('../payment/payment.service.js');
+      const result = await generatePaynowLink(
+        businessId, '+263783673079',
+        [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: Number(p.price) }],
+        p.currency,
+      );
+      return reply.send({ success: true, paymentUrl: result.paymentUrl, orderRef: result.order.orderReference, product: p.name });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
   app.post('/webhooks/resubscribe', async (_request, reply) => {
     try {
       const { pool } = await import('../../db/client.js');

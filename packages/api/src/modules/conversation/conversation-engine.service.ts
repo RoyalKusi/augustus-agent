@@ -590,7 +590,16 @@ export async function processInboundMessage(msg) {
         }
       }
     } catch (err) {
-      console.error('[ConversationEngine] Payment dispatch failed:', err);
+      const paymentErrMsg = err instanceof Error ? err.message : String(err);
+      console.error('[ConversationEngine] Payment dispatch failed:', paymentErrMsg);
+      // Send error to customer so they know what happened
+      try {
+        await sendMessage(businessId, {
+          type: 'text',
+          to: customerWaNumber,
+          body: `Sorry, there was an issue processing your payment: ${paymentErrMsg.slice(0, 100)}. Please try again or contact us directly.`,
+        });
+      } catch { /* ignore send error */ }
     }
   }
 
