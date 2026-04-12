@@ -124,18 +124,18 @@ export async function isBudgetAllowed(businessId) {
   return status.allowed;
 }
 
-export function buildSystemPrompt(trainingData, products, detectedLanguage, contextSummary, inChatPaymentsEnabled = true, intentInstruction = '') {
+export function buildSystemPrompt(trainingData, products, detectedLanguage, contextSummary, inChatPaymentsEnabled = true, intentInstruction = '', timeSinceLastMessageMs = 0) {
   const parts = [];
 
   parts.push(
-    'You are a fast-closing sales assistant on WhatsApp. Your job is to close sales quickly.\n\n' +
-    'RULES — follow strictly:\n' +
-    '- NEVER ask "Are you sure?", "Would you like to?", "Shall I?" or any confirmation question\n' +
-    '- When you see ANY buying signal (want, need, take, yes, ok, give me, order) — ACT immediately\n' +
-    '- If customer names a product → use PAYMENT_TRIGGER right away, assume quantity 1\n' +
-    '- Keep every reply to 1 sentence maximum\n' +
-    '- Do not repeat yourself, do not summarise, do not explain\n' +
-    '- Move the conversation forward on every single message'
+    'You are a friendly sales assistant on WhatsApp. Be natural and human.\n\n' +
+    'RULES:\n' +
+    '- Never send a payment link on a greeting or casual message\n' +
+    '- Only use PAYMENT_TRIGGER when the customer has clearly chosen a product and confirmed they want to buy\n' +
+    '- Only use CAROUSEL_TRIGGER when the customer asks to see products or shows buying intent\n' +
+    '- Keep replies to 1-2 sentences — natural chat, not a sales pitch\n' +
+    '- Use the conversation history — never repeat yourself\n' +
+    '- Match the customer\'s energy: casual if they\'re casual, direct if they\'re direct'
   );
 
   if (trainingData) {
@@ -158,6 +158,14 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
 
   if (intentInstruction) {
     parts.push('## Current Message Intent\n' + intentInstruction);
+  }
+
+  // Time gap context — helps Claude know if customer is returning after a break
+  if (timeSinceLastMessageMs > 60 * 60 * 1000) {
+    const hours = Math.round(timeSinceLastMessageMs / (60 * 60 * 1000));
+    parts.push(`## Time Gap\nCustomer was away for about ${hours} hour${hours > 1 ? 's' : ''}. Welcome them back warmly. If there was a previous conversation, gently reference it. Don't jump straight into selling.`);
+  } else if (timeSinceLastMessageMs > 30 * 60 * 1000) {
+    parts.push(`## Time Gap\nCustomer was away for about 30+ minutes. Acknowledge the gap naturally if relevant.`);
   }
 
   const triggerInstructions = inChatPaymentsEnabled
@@ -376,9 +384,19 @@ export async function processInboundMessage(msg) {
   const inChatPaymentsEnabled = paymentSettings?.in_chat_payments_enabled ?? true;
   const contextSummary = updatedConv.rows[0]?.context_summary || null;
 
-  // Detect intent and get a targeted instruction for Claude
-  const intentResult = detectIntent(messageText);
-  const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction);
+  // Calculate time since last message for context-aware responses
+  const lastMessageResult = await pool.query(
+    `SELECT created_at FROM messages WHERE conversation_id = $1 AND direction = 'inbound' ORDER BY created_at DESC LIMIT 1`,
+    [conversationId]
+  );
+  const lastMessageTime = lastMessageResult.rows[0]?.created_at
+    ? new Date(lastMessageResult.rows[0].created_at).getTime()
+    : timestamp;
+  const timeSinceLastMessageMs = timestamp - lastMessageTime;
+
+  // Detect intent with time gap awareness
+  const intentResult = detectIntent(messageText, timeSinceLastMessageMs);
+  const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction, timeSinceLastMessageMs);
 
   // Use higher token limit for payment/order intents so PAYMENT_TRIGGER JSON doesn't get cut off
   const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 600 : 300;
