@@ -343,7 +343,12 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           } else if (message.type === 'interactive') {
             const interactive = message.interactive;
             if (interactive?.type === 'button_reply') {
-              messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
+              const buttonId = interactive.button_reply?.id ?? '';
+              if (buttonId.startsWith('order_')) {
+                messageText = `I want to order product ${buttonId.replace('order_', '')}`;
+              } else {
+                messageText = interactive.button_reply?.title ?? buttonId ?? null;
+              }
             } else if (interactive?.type === 'list_reply') {
               messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
             }
@@ -423,7 +428,12 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           } else if (message.type === 'interactive') {
             const interactive = message.interactive;
             if (interactive?.type === 'button_reply') {
-              messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
+              const buttonId = interactive.button_reply?.id ?? '';
+              if (buttonId.startsWith('order_')) {
+                messageText = `I want to order product ${buttonId.replace('order_', '')}`;
+              } else {
+                messageText = interactive.button_reply?.title ?? buttonId ?? null;
+              }
             } else if (interactive?.type === 'list_reply') {
               messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
             }

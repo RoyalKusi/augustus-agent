@@ -437,23 +437,19 @@ export async function processInboundMessage(msg) {
     if (productRows.rows.length > 0) {
       for (const p of productRows.rows) {
         const imageUrl = p.image_urls?.[0];
-        const caption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}\n\nReply with the product name to order 🛒`;
+        const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
         if (imageUrl) {
-          // Send as image with caption
-          await sendMessage(businessId, {
-            type: 'image',
-            to: customerWaNumber,
-            url: imageUrl,
-            caption,
-          });
+          await sendMessage(businessId, { type: 'image', to: customerWaNumber, url: imageUrl, caption: productCaption });
         } else {
-          // No image — send as text
-          await sendMessage(businessId, {
-            type: 'text',
-            to: customerWaNumber,
-            body: caption,
-          });
+          await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: productCaption });
         }
+        // Send quick reply button for easy ordering
+        await sendMessage(businessId, {
+          type: 'quick_reply',
+          to: customerWaNumber,
+          body: `Order ${p.name}?`,
+          buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+        });
       }
     }
   }
@@ -545,12 +541,18 @@ export async function processInboundMessage(msg) {
             );
             for (const p of allProducts.rows) {
               const imageUrl = p.image_urls?.[0];
-              const caption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}\n\nReply with the product name to order 🛒`;
+              const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
               if (imageUrl) {
-                await sendMessage(businessId, { type: 'image', to: customerWaNumber, url: imageUrl, caption });
+                await sendMessage(businessId, { type: 'image', to: customerWaNumber, url: imageUrl, caption: productCaption });
               } else {
-                await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: caption });
+                await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: productCaption });
               }
+              await sendMessage(businessId, {
+                type: 'quick_reply',
+                to: customerWaNumber,
+                body: `Order ${p.name}?`,
+                buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+              });
             }
           }
         } else if (settings?.external_payment_details) {
