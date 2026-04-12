@@ -20,8 +20,27 @@ import { PLANS, isValidTier } from './plans.js';
 import { pool } from '../../db/client.js';
 
 export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
-  // GET /subscription/plans — list available plans
+  // GET /subscription/plans — list available plans (reads from plan_config DB table, falls back to hardcoded defaults)
   app.get('/subscription/plans', async (_request, reply) => {
+    try {
+      const result = await pool.query(
+        `SELECT tier, display_name, price_usd, token_budget_usd, is_available
+         FROM plan_config
+         WHERE is_available = TRUE
+         ORDER BY CASE tier WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'platinum' THEN 3 END`,
+      );
+      if (result.rows.length > 0) {
+        return reply.send({ plans: result.rows.map((r: Record<string, unknown>) => ({
+          tier: r.tier,
+          displayName: r.display_name,
+          priceUsd: Number(r.price_usd),
+          tokenBudgetUsd: Number(r.token_budget_usd),
+        })) });
+      }
+    } catch {
+      // Fall through to hardcoded defaults if table doesn't exist yet
+    }
+    // Fallback: return hardcoded defaults filtered to all available
     return reply.send({ plans: Object.values(PLANS) });
   });
 
@@ -109,6 +128,21 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
     const plan = PLANS[tier];
     if (!plan) return reply.status(400).send({ error: 'Plan not found.' });
 
+    // Try to get live price from plan_config DB, fall back to hardcoded
+    let planPrice = plan.priceUsd;
+    try {
+      const dbPlan = await pool.query<{ price_usd: string; is_available: boolean }>(
+        `SELECT price_usd, is_available FROM plan_config WHERE tier = $1`,
+        [tier],
+      );
+      if (dbPlan.rows.length > 0) {
+        if (!dbPlan.rows[0].is_available) {
+          return reply.status(400).send({ error: 'This plan is not currently available.' });
+        }
+        planPrice = Number(dbPlan.rows[0].price_usd);
+      }
+    } catch { /* use hardcoded fallback */ }
+
     // Get business email for Paynow
     const bizResult = await pool.query<{ email: string }>(
       `SELECT email FROM businesses WHERE id = $1`,
@@ -120,7 +154,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
       const result = await initiateSubscriptionCharge(
         businessId,
         email,
-        plan.priceUsd,
+        planPrice,
         `Augustus ${plan.displayName} subscription`,
         tier,
       );

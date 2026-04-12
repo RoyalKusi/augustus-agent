@@ -274,4 +274,93 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(code).send({ error: message });
     }
   });
+
+  // ─── Plan Management ──────────────────────────────────────────────────────
+
+  // GET /admin/plans — list all plan configs
+  app.get('/admin/plans', { preHandler: authenticateOperator }, async (_request, reply) => {
+    try {
+      const { pool } = await import('../../db/client.js');
+      const result = await pool.query(
+        `SELECT tier, display_name, price_usd, token_budget_usd, is_available, updated_at
+         FROM plan_config ORDER BY CASE tier WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'platinum' THEN 3 END`,
+      );
+      return reply.send({ plans: result.rows.map((r: Record<string, unknown>) => ({
+        tier: r.tier,
+        displayName: r.display_name,
+        priceUsd: Number(r.price_usd),
+        tokenBudgetUsd: Number(r.token_budget_usd),
+        isAvailable: r.is_available,
+        updatedAt: r.updated_at,
+      })) });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to get plans.';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // PUT /admin/plans/:tier — update a plan's config
+  app.put('/admin/plans/:tier', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { tier } = request.params as { tier: string };
+    if (!['silver', 'gold', 'platinum'].includes(tier)) {
+      return reply.status(400).send({ error: 'Invalid tier. Must be silver, gold, or platinum.' });
+    }
+    const body = request.body as {
+      displayName?: string;
+      priceUsd?: number;
+      tokenBudgetUsd?: number;
+      isAvailable?: boolean;
+    };
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+    if (body.displayName !== undefined) { updates.push(`display_name = $${idx++}`); params.push(body.displayName); }
+    if (body.priceUsd !== undefined) {
+      if (body.priceUsd <= 0) return reply.status(400).send({ error: 'priceUsd must be greater than 0.' });
+      updates.push(`price_usd = $${idx++}`); params.push(body.priceUsd);
+    }
+    if (body.tokenBudgetUsd !== undefined) {
+      if (body.tokenBudgetUsd <= 0) return reply.status(400).send({ error: 'tokenBudgetUsd must be greater than 0.' });
+      updates.push(`token_budget_usd = $${idx++}`); params.push(body.tokenBudgetUsd);
+    }
+    if (body.isAvailable !== undefined) { updates.push(`is_available = $${idx++}`); params.push(body.isAvailable); }
+    if (updates.length === 0) return reply.status(400).send({ error: 'No fields to update.' });
+    updates.push(`updated_at = NOW()`);
+    params.push(tier);
+    try {
+      const { pool } = await import('../../db/client.js');
+      const result = await pool.query(
+        `UPDATE plan_config SET ${updates.join(', ')} WHERE tier = $${idx} RETURNING *`,
+        params,
+      );
+      if (result.rows.length === 0) {
+        // Row may not exist yet — upsert
+        await pool.query(
+          `INSERT INTO plan_config (tier, display_name, price_usd, token_budget_usd, is_available)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (tier) DO UPDATE SET
+             display_name = EXCLUDED.display_name,
+             price_usd = EXCLUDED.price_usd,
+             token_budget_usd = EXCLUDED.token_budget_usd,
+             is_available = EXCLUDED.is_available,
+             updated_at = NOW()`,
+          [
+            tier,
+            body.displayName ?? tier.charAt(0).toUpperCase() + tier.slice(1),
+            body.priceUsd ?? 0,
+            body.tokenBudgetUsd ?? 0,
+            body.isAvailable ?? true,
+          ],
+        );
+      }
+      await import('../../modules/admin/admin.service.js').then(m => m.logAuditEvent(
+        request.operatorId, 'update_plan_config', 'plan', tier,
+        { priceUsd: body.priceUsd, tokenBudgetUsd: body.tokenBudgetUsd, isAvailable: body.isAvailable },
+      ));
+      return reply.send({ message: `Plan '${tier}' updated successfully.` });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update plan.';
+      return reply.status(500).send({ error: message });
+    }
+  });
 }
