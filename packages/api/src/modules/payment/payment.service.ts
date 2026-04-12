@@ -207,29 +207,25 @@ export async function initiatePaynowPayment(
   }
 
   // Build Paynow initiate transaction request (URL-encoded form)
-  // Field order matters for hash computation — must match exactly
-  // Per Paynow docs, authemail is optional and NOT included in the hash
-  const hashFields: Record<string, string> = {
+  // ALL fields including authemail are included in the hash
+  // Per Paynow PHP SDK: hash all field values in order, append integration key, SHA512
+  const fields: Record<string, string> = {
     id: integrationId,
     reference: orderReference,
     amount: amount.toFixed(2),
     additionalinfo: description,
     returnurl: returnUrl,
     resulturl: resultUrl,
+    authemail: email,
     status: 'Message',
   };
 
-  // Paynow hash: SHA512 of hash field values concatenated in order + integrationKey
-  // Per Paynow docs: https://developers.paynow.co.zw/docs/generating_hash.html
-  const hashInput = Object.values(hashFields).join('') + integrationKey;
+  // Paynow hash: SHA512 of ALL field values concatenated in order + integrationKey
+  // Per Paynow docs and PHP SDK source
+  const hashInput = Object.values(fields).join('') + integrationKey;
   const hash = await computeSha512(hashInput);
 
-  // Build full params including authemail (sent but not hashed)
-  const params = new URLSearchParams({
-    ...hashFields,
-    authemail: email,
-    hash: hash.toUpperCase(),
-  });
+  const params = new URLSearchParams({ ...fields, hash: hash.toUpperCase() });
 
   let response: Response;
   try {
