@@ -21,7 +21,7 @@ import { detectIntent } from './intent-detector.js';
 export const CLAUDE_HAIKU_MODEL = (function() {
   const m = config.claude.model;
   if (m && m.trim()) return m.trim();
-  return 'claude-sonnet-4-5-20250929';
+  return 'claude-sonnet-4-6';
 })();
 
 export function filterContextWindow(messages, nowMs, maxMessages = MAX_CONTEXT_MESSAGES, windowMs = CONTEXT_WINDOW_MS) {
