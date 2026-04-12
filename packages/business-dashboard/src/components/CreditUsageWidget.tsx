@@ -17,8 +17,15 @@ export default function CreditUsageWidget() {
 
   const load = () => {
     apiFetch<CreditUsage>('/dashboard/credit-usage')
-      .then(setData)
-      .catch((e: Error) => setError(e.message));
+      .then((d) => { setData(d); setError(''); })
+      .catch((e: Error) => {
+        // Suppress auth errors — apiFetch already redirects to /login on 401
+        const msg = e.message ?? '';
+        if (!msg.includes('session has expired') && !msg.includes('permission')) {
+          // Only show error if we have no data yet; otherwise keep showing last known data
+          setError((prev) => (data ? prev : msg));
+        }
+      });
   };
 
   useEffect(() => {
