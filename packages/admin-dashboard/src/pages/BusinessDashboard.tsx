@@ -6,7 +6,7 @@ interface BusinessDashboardData {
   subscription?: {
     tier: string;
     status: string;
-    currentPeriodEnd: string;
+    currentPeriodEnd: string | null;
     priceUsd: number;
   };
   tokenUsage?: {
@@ -66,7 +66,7 @@ export default function BusinessDashboard() {
               <Row label="Tier" value={data.subscription.tier} />
               <Row label="Status" value={data.subscription.status} />
               <Row label="Price" value={`${data.subscription.priceUsd.toFixed(2)}/mo`} />
-              <Row label="Current Period End" value={new Date(data.subscription.currentPeriodEnd).toLocaleDateString()} />
+              <Row label="Current Period End" value={data.subscription.currentPeriodEnd ? new Date(data.subscription.currentPeriodEnd).toLocaleDateString() : '—'} />
             </Section>
           )}
 

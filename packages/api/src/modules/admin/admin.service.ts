@@ -622,13 +622,11 @@ export async function approveWithdrawal(
 // ─── Task 13.14: Business dashboard view ─────────────────────────────────────
 
 export async function getBusinessDashboardView(businessId: string): Promise<Record<string, unknown>> {
-  const TIER_CAPS: Record<string, number> = { silver: 5, gold: 15, platinum: 50 };
-
   const [subResult, usageResult, overrideResult, convResult, ordersResult, waResult] = await Promise.all([
     pool.query<{ plan: string; status: string; price_usd: string; renewal_date: string | null }>(
       `SELECT s.plan, s.status, s.price_usd, s.renewal_date
        FROM subscriptions s
-       WHERE s.business_id = $1
+       WHERE s.business_id = $1 AND s.status = 'active'
        ORDER BY s.created_at DESC LIMIT 1`,
       [businessId],
     ),
@@ -663,7 +661,13 @@ export async function getBusinessDashboardView(businessId: string): Promise<Reco
   const sub = subResult.rows[0] ?? null;
   const usage = usageResult.rows[0] ?? null;
   const override = overrideResult.rows[0] ?? null;
-  const tierCap = sub ? (TIER_CAPS[sub.plan] ?? 0) : 0;
+
+  // Use the plan's canonical token budget as the tier cap (not a hardcoded map)
+  const { getPlan, isValidTier } = await import('../subscription/plans.js');
+  const tierCap = sub && isValidTier(sub.plan)
+    ? getPlan(sub.plan).tokenBudgetUsd
+    : 0;
+
   const monthlyCost = usage ? Number(usage.accumulated_cost_usd) : 0;
   const utilisationPct = tierCap > 0 ? (monthlyCost / tierCap) * 100 : 0;
   const wa = waResult.rows[0] ?? null;
