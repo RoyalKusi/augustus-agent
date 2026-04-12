@@ -72,7 +72,7 @@ const PRICE_QUESTION_PATTERNS = [
   /\b(is\s*(it|there)\s*(on\s*sale|discounted|reduced|cheaper|affordable|budget))\b/i,
   /\b(budget|affordable|cheap|inexpensive|economical|value\s*for\s*money)\b/i,
   /\b(expensive|pricey|costly|high\s*end|premium|luxury)\b/i,
-  /\b(\$|usd|zwd|zwl|rand|zar|kes|ngn|ghs|tzs|ugx|mwk|zmw|bwp|mzn|aoa)\s*\d+|\d+\s*(\$|usd|zwd|zwl|rand|zar|kes|ngn|ghs))\b/i,
+  /\b(\$|usd|zwd|zwl|rand|zar|kes|ngn|ghs|tzs|ugx|mwk|zmw|bwp|mzn|aoa)\s*\d+|\d+\s*(\$|usd|zwd|zwl|rand|zar|kes|ngn|ghs)\b/i,
 ];
 
 const AVAILABILITY_PATTERNS = [
