@@ -87,14 +87,22 @@ export async function generatePaynowLink(
   const totalAmount = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
   const orderReference = generateOrderReference();
 
+  // Use merchant email for Paynow authemail — Paynow requires a valid email, not a phone number
+  const merchantEmail = config.paynow.merchantEmail || config.email.fromAddress || 'payments@augustus.ai';
+
   // Call Paynow API to create payment link
   const paynowResult = await initiatePaynowPayment(
     orderReference,
-    customerWaNumber,
+    merchantEmail,
     totalAmount,
     currency,
     items.map((i) => `${i.productName} x${i.quantity}`).join(', '),
   );
+
+  // If Paynow failed, throw immediately — don't create a dangling order
+  if (!paynowResult.success || !paynowResult.paymentUrl) {
+    throw new Error(`Paynow payment initiation failed: ${paynowResult.error ?? 'Unknown error'}`);
+  }
 
   const client = await pool.connect();
   try {

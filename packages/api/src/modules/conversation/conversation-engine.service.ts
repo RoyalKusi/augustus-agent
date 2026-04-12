@@ -469,12 +469,14 @@ export async function processInboundMessage(msg) {
             const currency = orderDetails.currency ?? 'USD';
             let paymentUrl: string | null = null;
             let orderRef = '';
+            let paynowError = '';
             try {
               const result = await generatePaynowLink(businessId, customerWaNumber, orderItems, currency, conversationId);
               paymentUrl = result.paymentUrl;
               orderRef = result.order.orderReference;
             } catch (payErr) {
-              console.error('[ConversationEngine] generatePaynowLink failed:', payErr);
+              paynowError = payErr instanceof Error ? payErr.message : String(payErr);
+              console.error('[ConversationEngine] generatePaynowLink failed:', paynowError);
             }
             if (paymentUrl) {
               const total = orderItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
@@ -497,7 +499,7 @@ export async function processInboundMessage(msg) {
               await sendMessage(businessId, {
                 type: 'text',
                 to: customerWaNumber,
-                body: `Sorry, I couldn't generate a payment link right now. Please try again or contact us directly to complete your order.`,
+                body: `Sorry, I couldn't generate a payment link right now${paynowError ? ': ' + paynowError.replace('Paynow payment initiation failed: ', '') : ''}. Please try again or contact us directly to complete your order.`,
               });
             }
           } else {

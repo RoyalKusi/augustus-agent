@@ -57,6 +57,7 @@ export const config = {
   paynow: {
     integrationId: process.env.PAYNOW_INTEGRATION_ID ?? '',
     integrationKey: process.env.PAYNOW_INTEGRATION_KEY ?? '',
+    merchantEmail: process.env.PAYNOW_MERCHANT_EMAIL ?? '',
     returnUrl: optional('PAYNOW_RETURN_URL', 'https://example.com/payment/return'),
     resultUrl: optional('PAYNOW_RESULT_URL', 'https://example.com/payment/result'),
   },
