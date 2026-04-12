@@ -153,23 +153,40 @@ const start = async () => {
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`[Startup] Server listening on port ${port}`);
 
-    // Run migrations in background after server is up (non-fatal, non-blocking)
-    runMigrations().catch((migErr) => {
-      console.error('[Startup] Migration error (non-fatal):', migErr);
-    });
+    // Run migrations — fatal if any migration fails
+    try {
+      await runMigrations();
+    } catch (migErr) {
+      console.error('[Startup] Migration failed — cannot start server:', migErr);
+      process.exit(1);
+    }
 
     void startConversationEngineConsumer();
 
     // ── Scheduled jobs ────────────────────────────────────────────────────
+    const alertJobFailure = (jobName: string, err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Scheduler] ${jobName} failed: ${msg}`);
+      // Send alert email to ops (best-effort, non-blocking)
+      import('./modules/notification/notification.service.js').then(({ sendEmail }) => {
+        void sendEmail(
+          'silveraugustus@gmail.com',
+          `[Augustus] Scheduled job failed: ${jobName}`,
+          `<h3>Scheduled Job Failure</h3><p><strong>Job:</strong> ${jobName}</p><p><strong>Error:</strong> ${msg}</p><p><strong>Time:</strong> ${new Date().toISOString()}</p>`,
+          `Scheduled job failed: ${jobName}\nError: ${msg}\nTime: ${new Date().toISOString()}`,
+        ).catch(() => {});
+      }).catch(() => {});
+    };
+
     // Expire stale payment links every 2 minutes
     const expireInterval = setInterval(() => {
-      expireStaleOrders().catch((err) => console.error('[Scheduler] expireStaleOrders failed:', err));
+      expireStaleOrders().catch((err) => alertJobFailure('expireStaleOrders', err));
     }, 2 * 60 * 1000);
 
     // Daily jobs: billing cycle reset + subscription renewal reminders (run at startup then every 24h)
     const runDailyJobs = () => {
-      runBillingCycleResetJob().catch((err) => console.error('[Scheduler] runBillingCycleResetJob failed:', err));
-      sendRenewalReminders().catch((err) => console.error('[Scheduler] sendRenewalReminders failed:', err));
+      runBillingCycleResetJob().catch((err) => alertJobFailure('runBillingCycleResetJob', err));
+      sendRenewalReminders().catch((err) => alertJobFailure('sendRenewalReminders', err));
     };
     runDailyJobs();
     const dailyInterval = setInterval(runDailyJobs, 24 * 60 * 60 * 1000);

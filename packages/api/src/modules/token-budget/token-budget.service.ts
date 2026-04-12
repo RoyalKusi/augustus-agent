@@ -80,21 +80,26 @@ export async function recordInferenceCost(
   businessEmail: string,
 ): Promise<BudgetStatus> {
   const cycleStart = await getCurrentCycleStart(businessId);
+  // Get cap BEFORE incrementing so we can atomically enforce suspension
+  const { capUsd } = await getUsageAndCap(businessId);
 
-  // Upsert usage row and atomically increment cost
+  // Upsert usage row and atomically increment cost + enforce suspension in one query
   const result = await pool.query<TokenUsageRow>(
     `INSERT INTO token_usage (business_id, billing_cycle_start, accumulated_cost_usd)
      VALUES ($1, $2, $3)
      ON CONFLICT (business_id, billing_cycle_start)
      DO UPDATE SET
        accumulated_cost_usd = token_usage.accumulated_cost_usd + $3,
+       suspended = CASE
+         WHEN (token_usage.accumulated_cost_usd + $3) >= $4 THEN TRUE
+         ELSE token_usage.suspended
+       END,
        updated_at = NOW()
      RETURNING *`,
-    [businessId, cycleStart, costUsd],
+    [businessId, cycleStart, costUsd, capUsd],
   );
 
   const usage = result.rows[0];
-  const { capUsd } = await getUsageAndCap(businessId);
   const accumulated = Number(usage.accumulated_cost_usd);
   const pct = accumulated / capUsd;
 
@@ -204,7 +209,7 @@ export async function resetBillingCycle(businessId: string): Promise<void> {
 
 /**
  * Scheduled job: reset all businesses whose billing cycle starts today.
- * Intended to be called by a daily cron job.
+ * Idempotent — uses ON CONFLICT DO NOTHING so safe to call multiple times per day.
  */
 export async function runBillingCycleResetJob(): Promise<void> {
   const today = new Date().toISOString().split('T')[0];
@@ -310,8 +315,8 @@ async function getUsageAndCap(
   } else if (subResult.rows.length > 0) {
     capUsd = getPlan(subResult.rows[0].plan).tokenBudgetUsd;
   } else {
-    // No subscription — use silver default as fallback
-    capUsd = getPlan('silver').tokenBudgetUsd;
+    // No subscription — return 0 cap so unsubscribed businesses can't use AI
+    capUsd = 0;
   }
 
   return { usage, capUsd };

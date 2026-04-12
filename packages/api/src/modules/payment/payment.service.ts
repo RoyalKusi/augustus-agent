@@ -496,7 +496,17 @@ export async function confirmPayment(orderId: string, paynowReference: string): 
   try {
     await client.query('BEGIN');
 
-    // Mark order completed
+    // Mark order completed — use SELECT FOR UPDATE to prevent double-processing
+    // from concurrent webhook + polling calls
+    const lockResult = await client.query<{ id: string }>(
+      `SELECT id FROM orders WHERE id = $1 AND payment_status = 'pending' FOR UPDATE`,
+      [orderId],
+    );
+    if (lockResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return; // already processed by a concurrent call
+    }
+
     const orderResult = await client.query<{
       id: string;
       business_id: string;

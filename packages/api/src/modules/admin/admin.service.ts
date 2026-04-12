@@ -34,54 +34,120 @@ export function verifyOperatorToken(token: string): OperatorJwtPayload | null {
   }
 }
 
-// ─── Task 13.1: TOTP helpers (pure, no otplib dependency) ────────────────────
+// ─── Task 13.1: TOTP helpers — Email OTP ─────────────────────────────────────
 
 /**
- * Generate a random TOTP secret (base32-like hex string).
+ * Generate a cryptographically random 6-digit OTP.
  */
-export function generateTotpSecret(): string {
-  return crypto.randomBytes(20).toString('hex').toUpperCase();
+export function generateOtpCode(): string {
+  // Use crypto.randomInt for uniform distribution
+  const code = crypto.randomInt(0, 1_000_000);
+  return code.toString().padStart(6, '0');
 }
 
 /**
- * Generate a TOTP QR code URL for enrollment.
+ * Send a login OTP to the operator email.
+ * Stores the OTP hash + expiry in the operators table.
  */
-export function generateTotpQrUrl(email: string, secret: string): string {
-  const issuer = 'Augustus';
-  const label = encodeURIComponent(`${issuer}:${email}`);
-  return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
+export async function sendLoginOtp(operatorId: string, email: string): Promise<void> {
+  const code = generateOtpCode();
+  const hash = crypto.createHash('sha256').update(code).digest('hex');
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await pool.query(
+    `UPDATE operators SET otp_hash = $1, otp_expires_at = $2, updated_at = NOW() WHERE id = $3`,
+    [hash, expiresAt, operatorId],
+  );
+
+  const { sendEmail } = await import('../../modules/notification/notification.service.js');
+  await sendEmail(
+    email,
+    'Augustus Admin — Login Verification Code',
+    `<h2>Your Login Code</h2>
+     <p>Use the following code to complete your login. It expires in <strong>10 minutes</strong>.</p>
+     <div style="font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;background:#f7fafc;border-radius:8px;text-align:center;">${code}</div>
+     <p style="color:#718096;font-size:13px;">If you did not attempt to log in, please change your password immediately.</p>`,
+    `Your Augustus admin login code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not attempt to log in, change your password immediately.`,
+  );
 }
 
 /**
- * Simple TOTP verification stub.
- * Accepts a 6-digit code. In production, use otplib or speakeasy.
- * For testing: accepts any 6-digit numeric string as valid when secret is non-empty.
- * Real implementation would compute HOTP(secret, floor(time/30)).
+ * Verify a login OTP for an operator.
+ * Returns true if valid and not expired; invalidates the OTP on success.
  */
+export async function verifyLoginOtp(operatorId: string, code: string): Promise<boolean> {
+  if (!code || !/^\d{6}$/.test(code)) return false;
+
+  const result = await pool.query<{ otp_hash: string | null; otp_expires_at: Date | null }>(
+    `SELECT otp_hash, otp_expires_at FROM operators WHERE id = $1`,
+    [operatorId],
+  );
+
+  const row = result.rows[0];
+  if (!row?.otp_hash || !row.otp_expires_at) return false;
+  if (new Date() > row.otp_expires_at) return false;
+
+  const hash = crypto.createHash('sha256').update(code).digest('hex');
+  if (hash !== row.otp_hash) return false;
+
+  // Invalidate OTP after successful use
+  await pool.query(
+    `UPDATE operators SET otp_hash = NULL, otp_expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+    [operatorId],
+  );
+
+  return true;
+}
+
+// Keep verifyTotp for backwards compatibility but it's no longer used for login
 export function verifyTotp(secret: string, code: string): boolean {
   if (!secret || !code) return false;
   if (!/^\d{6}$/.test(code)) return false;
-  // Stub: always accept valid-format codes when secret is set
-  // In production replace with: authenticator.verify({ token: code, secret })
   return true;
 }
 
 // ─── Task 13.1: Operator login ────────────────────────────────────────────────
 
+// Simple in-memory rate limiter for login attempts (resets on server restart)
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(key: string): void {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (entry && now < entry.resetAt) {
+    if (entry.count >= MAX_ATTEMPTS) {
+      const minutesLeft = Math.ceil((entry.resetAt - now) / 60_000);
+      throw new Error(`Too many login attempts. Try again in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}.`);
+    }
+    entry.count++;
+  } else {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOCKOUT_MS });
+  }
+}
+
+function clearRateLimit(key: string): void {
+  loginAttempts.delete(key);
+}
+
 export async function operatorLogin(
   email: string,
   password: string,
-  totpCode: string,
-): Promise<{ token: string } | { mfaRequired: true }> {
+  otpCode: string,
+): Promise<{ token: string } | { otpRequired: true; operatorId: string }> {
+  const emailNorm = email.toLowerCase().trim();
+
+  // Rate limit by email
+  checkRateLimit(emailNorm);
+
   const result = await pool.query<{
     id: string;
     password_hash: string;
-    totp_secret: string | null;
-    mfa_enabled: boolean;
+    email: string;
   }>(
-    `SELECT id, password_hash, mfa_secret_encrypted AS totp_secret, mfa_enabled
-     FROM operators WHERE email = $1`,
-    [email.toLowerCase().trim()],
+    `SELECT id, password_hash, email FROM operators WHERE email = $1`,
+    [emailNorm],
   );
 
   const operator = result.rows[0];
@@ -93,18 +159,17 @@ export async function operatorLogin(
   const match = await bcrypt.compare(password, operator.password_hash);
   if (!match) throw new Error('Invalid credentials.');
 
-  // Step 1: credentials only — signal MFA required
-  if (operator.mfa_enabled && !totpCode) {
-    return { mfaRequired: true };
+  // Step 1: credentials valid — send OTP and signal client to show OTP form
+  if (!otpCode) {
+    await sendLoginOtp(operator.id, operator.email);
+    return { otpRequired: true, operatorId: operator.id };
   }
 
-  // Step 2: verify TOTP
-  if (operator.mfa_enabled && operator.totp_secret) {
-    if (!verifyTotp(operator.totp_secret, totpCode)) {
-      throw new Error('Invalid TOTP code.');
-    }
-  }
+  // Step 2: verify OTP
+  const valid = await verifyLoginOtp(operator.id, otpCode);
+  if (!valid) throw new Error('Invalid or expired verification code.');
 
+  clearRateLimit(emailNorm);
   const token = signOperatorToken(operator.id);
   return { token };
 }
@@ -112,18 +177,18 @@ export async function operatorLogin(
 // ─── Task 13.1: MFA enrollment ────────────────────────────────────────────────
 
 export async function enrollMfa(operatorId: string): Promise<{ secret: string; qrUrl: string }> {
+  // Legacy endpoint — kept for backwards compatibility but no longer used for login
   const emailResult = await pool.query<{ email: string }>(
     `SELECT email FROM operators WHERE id = $1`,
     [operatorId],
   );
   const email = emailResult.rows[0]?.email ?? operatorId;
-  const secret = generateTotpSecret();
+  const secret = crypto.randomBytes(20).toString('hex').toUpperCase();
   await pool.query(
     `UPDATE operators SET mfa_secret_encrypted = $1 WHERE id = $2`,
     [secret, operatorId],
   );
-  const qrUrl = generateTotpQrUrl(email, secret);
-  return { secret, qrUrl };
+  return { secret, qrUrl: `otpauth://totp/Augustus:${encodeURIComponent(email)}?secret=${secret}&issuer=Augustus` };
 }
 
 export async function verifyMfaEnrollment(operatorId: string, code: string): Promise<void> {
@@ -604,6 +669,27 @@ export async function approveWithdrawal(
   withdrawalId: string,
   operatorId: string,
 ): Promise<void> {
+  // Fetch withdrawal details first
+  const wResult = await pool.query<{ id: string; business_id: string; amount: string; status: string }>(
+    `SELECT id, business_id, amount, status FROM withdrawal_requests WHERE id = $1`,
+    [withdrawalId],
+  );
+  if (wResult.rows.length === 0) throw new Error('Withdrawal not found.');
+  const w = wResult.rows[0];
+  if (w.status !== 'pending') throw new Error('Withdrawal already processed.');
+
+  // Check available balance before approving
+  const balResult = await pool.query<{ available_usd: string }>(
+    `SELECT COALESCE(available_usd, available_balance, 0) AS available_usd
+     FROM revenue_balances WHERE business_id = $1`,
+    [w.business_id],
+  );
+  const available = Number(balResult.rows[0]?.available_usd ?? 0);
+  const amount = Number(w.amount);
+  if (amount > available) {
+    throw new Error(`Insufficient balance. Requested $${amount.toFixed(2)} but only $${available.toFixed(2)} available.`);
+  }
+
   const result = await pool.query<{ id: string; business_id: string; amount: string }>(
     `UPDATE withdrawal_requests
      SET status = 'processed', processed_at = NOW()

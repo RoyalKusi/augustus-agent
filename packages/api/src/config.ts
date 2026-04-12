@@ -70,7 +70,17 @@ export const config = {
   },
 
   jwt: {
-    secret: optional('JWT_SECRET', 'change-me-in-production'),
+    secret: (() => {
+      const s = process.env.JWT_SECRET;
+      if (!s || s === 'change-me-in-production') {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_SECRET must be set to a strong random value in production.');
+        }
+        console.warn('[Config] WARNING: JWT_SECRET is not set. Using insecure default — DO NOT use in production.');
+        return 'change-me-in-production';
+      }
+      return s;
+    })(),
     expiresIn: optional('JWT_EXPIRES_IN', '7d'),
   },
 

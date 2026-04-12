@@ -32,17 +32,21 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // ─── Task 13.1: Operator auth ───────────────────────────────────────────────
 
   app.post('/admin/auth/login', async (request, reply) => {
-    const { email, password, totpCode } = request.body as {
+    const { email, password, otpCode } = request.body as {
       email: string;
       password: string;
-      totpCode: string;
+      otpCode?: string;
     };
+    if (!email || !password) {
+      return reply.status(400).send({ error: 'Email and password are required.' });
+    }
     try {
-      const result = await operatorLogin(email, password, totpCode ?? '');
+      const result = await operatorLogin(email, password, otpCode ?? '');
       return reply.send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed.';
-      return reply.status(401).send({ error: message });
+      const status = message.includes('Too many') ? 429 : 401;
+      return reply.status(status).send({ error: message });
     }
   });
 

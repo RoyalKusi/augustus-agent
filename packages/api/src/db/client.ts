@@ -76,7 +76,7 @@ export async function runMigrations(): Promise<void> {
       } catch (err) {
         await client.query('ROLLBACK');
         console.error(`[Migrations] Failed to apply ${file}:`, err);
-        // Don't throw — let the server start even if a migration fails
+        throw new Error(`Migration failed: ${file}. Server cannot start with incomplete schema. Error: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   } finally {
