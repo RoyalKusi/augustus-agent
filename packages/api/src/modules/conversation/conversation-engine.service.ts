@@ -180,12 +180,12 @@ export function detectLanguage(text) {
   return 'English';
 }
 
-export async function callClaudeHaiku(systemPrompt, contextMessages, userMessage) {
+export async function callClaudeHaiku(systemPrompt, contextMessages, userMessage, maxTokens = 300) {
   const messages = [
     ...contextMessages.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
-  const body = { model: CLAUDE_HAIKU_MODEL, max_tokens: 300, system: systemPrompt, messages };
+  const body = { model: CLAUDE_HAIKU_MODEL, max_tokens: maxTokens, system: systemPrompt, messages };
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': config.claude.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -376,9 +376,12 @@ export async function processInboundMessage(msg) {
   const intentResult = detectIntent(messageText);
   const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction);
 
+  // Use higher token limit for payment/order intents so PAYMENT_TRIGGER JSON doesn't get cut off
+  const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 600 : 300;
+
   let claudeResponse;
   try {
-    claudeResponse = await callClaudeHaiku(systemPrompt, contextMessages, messageText);
+    claudeResponse = await callClaudeHaiku(systemPrompt, contextMessages, messageText, maxTokens);
   } catch (err) {
     console.error('[ConversationEngine] Claude API error:', err);
     const fallbackText = 'Our AI assistant is temporarily unavailable. Please try again shortly.';
@@ -445,7 +448,7 @@ export async function processInboundMessage(msg) {
           const orderItems = [];
           for (const item of items) {
             const prodResult = await pool.query<{ name: string; price: string; currency: string }>(
-              'SELECT name, price, currency FROM products WHERE id = $1 AND business_id = $2',
+              'SELECT name, price, currency FROM products WHERE id = $1 AND business_id = $2 AND is_active = TRUE AND stock_quantity > 0',
               [item.product_id, businessId]
             );
             const prod = prodResult.rows[0];
@@ -460,7 +463,13 @@ export async function processInboundMessage(msg) {
           }
           if (orderItems.length > 0) {
             const currency = orderDetails.currency ?? 'USD';
-            const { paymentUrl } = await generatePaynowLink(businessId, customerWaNumber, orderItems, currency, conversationId);
+            let paymentUrl: string | null = null;
+            try {
+              const result = await generatePaynowLink(businessId, customerWaNumber, orderItems, currency, conversationId);
+              paymentUrl = result.paymentUrl;
+            } catch (payErr) {
+              console.error('[ConversationEngine] generatePaynowLink failed:', payErr);
+            }
             if (paymentUrl) {
               const total = orderItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
               const itemSummary = orderItems.map(i => `• ${i.productName} x${i.quantity} — ${currency} ${(i.unitPrice * i.quantity).toFixed(2)}`).join('\n');
@@ -470,6 +479,33 @@ export async function processInboundMessage(msg) {
                 body: `🛒 *Order Summary*\n${itemSummary}\n\n*Total: ${currency} ${total.toFixed(2)}*\n\nClick the link below to complete your secure payment:`,
                 paymentUrl,
               });
+            } else {
+              await sendMessage(businessId, {
+                type: 'text',
+                to: customerWaNumber,
+                body: `Sorry, I couldn't generate a payment link right now. Please try again or contact us directly to complete your order.`,
+              });
+            }
+          } else {
+            // No valid products found — Claude may have used wrong IDs
+            await sendMessage(businessId, {
+              type: 'text',
+              to: customerWaNumber,
+              body: `I couldn't find those items in our current stock. Let me show you what's available:`,
+            });
+            // Re-show products
+            const allProducts = await pool.query(
+              'SELECT id, name, price, currency, image_urls, description FROM products WHERE business_id = $1 AND is_active = TRUE AND stock_quantity > 0 LIMIT 5',
+              [businessId]
+            );
+            for (const p of allProducts.rows) {
+              const imageUrl = p.image_urls?.[0];
+              const caption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}\n\nReply with the product name to order 🛒`;
+              if (imageUrl) {
+                await sendMessage(businessId, { type: 'image', to: customerWaNumber, url: imageUrl, caption });
+              } else {
+                await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: caption });
+              }
             }
           }
         } else if (settings?.external_payment_details) {
@@ -479,7 +515,7 @@ export async function processInboundMessage(msg) {
           const orderItems = [];
           for (const item of items) {
             const prodResult = await pool.query<{ name: string; price: string; currency: string }>(
-              'SELECT name, price, currency FROM products WHERE id = $1 AND business_id = $2',
+              'SELECT name, price, currency FROM products WHERE id = $1 AND business_id = $2 AND is_active = TRUE',
               [item.product_id, businessId]
             );
             const prod = prodResult.rows[0];
@@ -503,7 +539,20 @@ export async function processInboundMessage(msg) {
               externalPaymentDetails: settings.external_payment_details,
             });
             await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: invoiceMsg });
+          } else {
+            await sendMessage(businessId, {
+              type: 'text',
+              to: customerWaNumber,
+              body: `I couldn't find those items in our current stock. Let me show you what's available:`,
+            });
           }
+        } else {
+          // No payment method configured
+          await sendMessage(businessId, {
+            type: 'text',
+            to: customerWaNumber,
+            body: `To complete your order, please contact us directly and we'll process it for you.`,
+          });
         }
       }
     } catch (err) {
