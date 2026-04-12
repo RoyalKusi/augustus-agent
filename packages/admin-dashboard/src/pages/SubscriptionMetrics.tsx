@@ -4,6 +4,7 @@ import { apiFetch } from '../api';
 interface TierStats {
   count: number;
   mrr: number;
+  avgCreditUtilisationPercent: number;
 }
 
 interface SubscriptionMetricsData {
@@ -28,7 +29,7 @@ export default function SubscriptionMetrics() {
         tier,
         count: data.perTier[tier].count,
         mrr: data.perTier[tier].mrr,
-        avgCreditUtilisation: data.avgCreditUtilisationPercent,
+        avgCreditUtilisation: data.perTier[tier].avgCreditUtilisationPercent,
       }))
     : [];
 

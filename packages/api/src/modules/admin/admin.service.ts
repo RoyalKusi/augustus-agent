@@ -415,9 +415,9 @@ export async function setTokenOverride(
 
 export interface SubscriptionMetrics {
   perTier: {
-    silver: { count: number; mrr: number };
-    gold: { count: number; mrr: number };
-    platinum: { count: number; mrr: number };
+    silver: { count: number; mrr: number; avgCreditUtilisationPercent: number };
+    gold: { count: number; mrr: number; avgCreditUtilisationPercent: number };
+    platinum: { count: number; mrr: number; avgCreditUtilisationPercent: number };
   };
   totalMrr: number;
   churnCount: number;
@@ -425,22 +425,48 @@ export interface SubscriptionMetrics {
 }
 
 export async function getSubscriptionMetrics(): Promise<SubscriptionMetrics> {
-  const tierResult = await pool.query<{
+  // Query 1: active subscription counts per tier
+  const countResult = await pool.query<{
     tier: string;
     count: string;
-    mrr: string;
   }>(
-    `SELECT plan AS tier, COUNT(*) AS count, COALESCE(SUM(price_usd), 0) AS mrr
+    `SELECT plan AS tier, COUNT(*) AS count
      FROM subscriptions
      WHERE status = 'active'
      GROUP BY plan`,
   );
 
-  const perTier = { silver: { count: 0, mrr: 0 }, gold: { count: 0, mrr: 0 }, platinum: { count: 0, mrr: 0 } };
-  for (const row of tierResult.rows) {
+  // Query 2: MRR from confirmed payments in the current calendar month
+  const mrrResult = await pool.query<{
+    tier: string;
+    mrr: string;
+  }>(
+    `SELECT tier, COALESCE(SUM(amount), 0) AS mrr
+     FROM subscription_payments
+     WHERE status = 'paid'
+       AND created_at >= date_trunc('month', NOW())
+       AND created_at <  date_trunc('month', NOW()) + INTERVAL '1 month'
+     GROUP BY tier`,
+  );
+
+  // Merge count and mrr results into perTier
+  const perTier = {
+    silver: { count: 0, mrr: 0, avgCreditUtilisationPercent: 0 },
+    gold: { count: 0, mrr: 0, avgCreditUtilisationPercent: 0 },
+    platinum: { count: 0, mrr: 0, avgCreditUtilisationPercent: 0 },
+  };
+
+  for (const row of countResult.rows) {
     const tier = row.tier as keyof typeof perTier;
     if (tier in perTier) {
-      perTier[tier] = { count: Number(row.count), mrr: Number(row.mrr) };
+      perTier[tier].count = Number(row.count);
+    }
+  }
+
+  for (const row of mrrResult.rows) {
+    const tier = row.tier as keyof typeof perTier;
+    if (tier in perTier) {
+      perTier[tier].mrr = Number(row.mrr);
     }
   }
 
@@ -453,25 +479,36 @@ export async function getSubscriptionMetrics(): Promise<SubscriptionMetrics> {
   );
   const churnCount = Number(churnResult.rows[0]?.count ?? 0);
 
-  // Compute avg credit utilisation across active subscriptions
-  const TIER_CAPS: Record<string, number> = { silver: 5, gold: 15, platinum: 50 };
-  const utilResult = await pool.query<{ plan: string; accumulated_cost_usd: string }>(
-    `SELECT s.plan, COALESCE(tu.accumulated_cost_usd, 0) AS accumulated_cost_usd
+  // Compute per-tier avg credit utilisation using actual price_usd as cap
+  const utilResult = await pool.query<{ plan: string; avg_utilisation_pct: string }>(
+    `SELECT s.plan,
+            COALESCE(AVG(
+              CASE WHEN s.price_usd > 0
+                   THEN (COALESCE(tu.accumulated_cost_usd, 0) / s.price_usd) * 100
+                   ELSE 0
+              END
+            ), 0) AS avg_utilisation_pct
      FROM subscriptions s
      LEFT JOIN token_usage tu ON tu.business_id = s.business_id
        AND tu.billing_cycle_start = (
          SELECT MAX(billing_cycle_start) FROM token_usage WHERE business_id = s.business_id
        )
-     WHERE s.status = 'active'`,
+     WHERE s.status = 'active'
+     GROUP BY s.plan`,
   );
-  let avgCreditUtilisationPercent = 0;
-  if (utilResult.rows.length > 0) {
-    const total = utilResult.rows.reduce((sum, row) => {
-      const cap = TIER_CAPS[row.plan] ?? 5;
-      return sum + (Number(row.accumulated_cost_usd) / cap) * 100;
-    }, 0);
-    avgCreditUtilisationPercent = Math.round((total / utilResult.rows.length) * 10) / 10;
+
+  for (const row of utilResult.rows) {
+    const tier = row.plan as keyof typeof perTier;
+    if (tier in perTier) {
+      perTier[tier].avgCreditUtilisationPercent = Math.round(Number(row.avg_utilisation_pct) * 10) / 10;
+    }
   }
+
+  const tierValues = [perTier.silver.avgCreditUtilisationPercent, perTier.gold.avgCreditUtilisationPercent, perTier.platinum.avgCreditUtilisationPercent];
+  const nonZeroTiers = tierValues.filter(v => v > 0);
+  const avgCreditUtilisationPercent = nonZeroTiers.length > 0
+    ? Math.round((nonZeroTiers.reduce((s, v) => s + v, 0) / nonZeroTiers.length) * 10) / 10
+    : 0;
 
   return { perTier, totalMrr, churnCount, avgCreditUtilisationPercent };
 }
