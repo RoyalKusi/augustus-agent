@@ -219,9 +219,10 @@ export async function initiatePaynowPayment(
     status: 'Message',
   };
 
-  // Paynow hash: MD5 of all field values concatenated in order + integrationKey
+  // Paynow hash: SHA512 of all field values concatenated in order (excluding hash field) + integrationKey
+  // Per Paynow docs: https://developers.paynow.co.zw/docs/generating_hash.html
   const hashInput = Object.values(fields).join('') + integrationKey;
-  const hash = await computeMd5(hashInput);
+  const hash = await computeSha512(hashInput);
 
   const params = new URLSearchParams({ ...fields, hash: hash.toUpperCase() });
 
@@ -259,9 +260,13 @@ export async function initiatePaynowPayment(
 }
 
 async function computeMd5(input: string): Promise<string> {
-  // Use Node.js crypto for MD5
   const { createHash } = await import('crypto');
   return createHash('md5').update(input).digest('hex');
+}
+
+async function computeSha512(input: string): Promise<string> {
+  const { createHash } = await import('crypto');
+  return createHash('sha512').update(input, 'utf8').digest('hex');
 }
 
 // ─── Task 9.2: Paynow Webhook + Polling ──────────────────────────────────────
@@ -285,7 +290,7 @@ async function validatePaynowWebhookHash(payload: Record<string, string>): Promi
       .map(([, value]) => value)
       .join('') + integrationKey;
 
-  const expectedHash = (await computeMd5(hashInput)).toUpperCase();
+  const expectedHash = (await computeSha512(hashInput)).toUpperCase();
   return receivedHash === expectedHash;
 }
 
