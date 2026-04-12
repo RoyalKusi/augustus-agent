@@ -177,44 +177,81 @@ function score(text: string, patterns: RegExp[]): number {
   return patterns.reduce((acc, p) => acc + (p.test(lower) ? 1 : 0), 0);
 }
 
-// ── Intent instructions ───────────────────────────────────────────────────────
+
+// ── Intent instructions (action-oriented, no confirmation questions) ──────────
 
 const INTENT_INSTRUCTIONS: Record<Intent, string> = {
   greeting:
-    'Customer is greeting you. Respond warmly and briefly, then ask what they are looking for today.',
+    'Customer is greeting. Reply in one warm sentence and immediately ask what they are looking for — do not wait.',
   product_inquiry:
-    'Customer wants to see products. Show them using CAROUSEL_TRIGGER with all relevant product IDs. Keep your text to one sentence.',
+    'Customer wants products. Immediately use CAROUSEL_TRIGGER with ALL product IDs. One sentence intro only.',
   price_question:
-    'Customer is asking about price. Give the price directly and concisely, then ask if they would like to order.',
+    'Customer asked about price. State the price in one sentence, then say "Want me to place the order?" — nothing else.',
   availability_check:
-    'Customer is checking availability. Confirm what is in stock and invite them to order.',
+    'Item is in stock. Confirm in one sentence and immediately ask "How many would you like?" to move to order.',
   complaint:
-    'Customer is unhappy or complaining. Acknowledge their frustration sincerely in one sentence, apologise briefly, then offer a concrete solution or ask how you can make it right. Do NOT push products immediately.',
+    'Customer is unhappy. One sentence apology, then immediately offer a solution. Do not ask questions.',
   ready_to_buy:
-    'Customer is ready to purchase. Confirm the item and quantity, then immediately use PAYMENT_TRIGGER to process the order. Do not delay.',
+    'CLOSE THE SALE NOW. Do not ask any questions. Do not confirm. Immediately use PAYMENT_TRIGGER with the product and quantity. If quantity is unclear, assume 1.',
   negotiation:
-    'Customer is negotiating price. Acknowledge their concern, briefly justify the value, and offer the best you can (discount, bundle, or free delivery if applicable).',
+    'Acknowledge briefly, offer best price or free delivery in one sentence, then immediately ask "Shall I place the order at that price?"',
   off_topic:
-    'Customer is going off-topic. Politely redirect the conversation back to how you can help them with their shopping needs.',
+    'One sentence redirect: "I can help you with our products — want to see what we have?" Then use CAROUSEL_TRIGGER.',
 };
+
+// ── Buying signal keywords (any match = ready_to_buy override) ────────────────
+
+const BUYING_SIGNAL_WORDS = [
+  /\b(want|need|take|buy|order|get|purchase|grab|pick|choose|select|have|give\s*me)\b/i,
+  /\b(yes|yep|yeah|yah|sure|ok|okay|alright|fine|deal|done|sold|perfect|great)\b/i,
+  /\b(send|pay|payment|link|invoice|checkout|proceed|confirm|place)\b/i,
+  /\b(one|two|three|four|five|\d+)\s*(pair|piece|unit|item|set|of\s*them)?\b/i,
+  /\b(i'?ll|i\s*will|let'?s|go\s*ahead|do\s*it|make\s*it\s*happen)\b/i,
+];
 
 // ── Main detector ─────────────────────────────────────────────────────────────
 
 export function detectIntent(message: string): IntentResult {
   const text = message.trim();
+  const lower = text.toLowerCase();
 
+  // PRIORITY 1: Complaints always win — never push a sale on an angry customer
+  const complaintScore = score(text, COMPLAINT_PATTERNS);
+  if (complaintScore >= 1) {
+    return { intent: 'complaint', confidence: 'high', instruction: INTENT_INSTRUCTIONS.complaint };
+  }
+
+  // PRIORITY 2: Explicit ready_to_buy patterns
+  const readyScore = score(text, READY_TO_BUY_PATTERNS);
+  if (readyScore >= 1) {
+    return { intent: 'ready_to_buy', confidence: 'high', instruction: INTENT_INSTRUCTIONS.ready_to_buy };
+  }
+
+  // PRIORITY 3: Any buying signal word = treat as ready_to_buy
+  // This is the aggressive close — pick up the slightest hint
+  const hasBuyingSignal = BUYING_SIGNAL_WORDS.some((p) => p.test(lower));
+  if (hasBuyingSignal) {
+    // But not if it's clearly a question about price or availability
+    const isPriceQ = score(text, PRICE_QUESTION_PATTERNS) >= 1;
+    const isAvailQ = score(text, AVAILABILITY_PATTERNS) >= 1;
+    const isNegotiation = score(text, NEGOTIATION_PATTERNS) >= 1;
+    if (!isPriceQ && !isAvailQ && !isNegotiation) {
+      return { intent: 'ready_to_buy', confidence: 'medium', instruction: INTENT_INSTRUCTIONS.ready_to_buy };
+    }
+  }
+
+  // PRIORITY 4: Score remaining intents
   const scores: Record<Intent, number> = {
     greeting: score(text, GREETING_PATTERNS),
     product_inquiry: score(text, PRODUCT_INQUIRY_PATTERNS),
     price_question: score(text, PRICE_QUESTION_PATTERNS),
     availability_check: score(text, AVAILABILITY_PATTERNS),
-    complaint: score(text, COMPLAINT_PATTERNS),
-    ready_to_buy: score(text, READY_TO_BUY_PATTERNS),
+    complaint: 0, // already handled
+    ready_to_buy: 0, // already handled
     negotiation: score(text, NEGOTIATION_PATTERNS),
     off_topic: score(text, OFF_TOPIC_PATTERNS),
   };
 
-  // Find the highest scoring intent
   let topIntent: Intent = 'product_inquiry';
   let topScore = 0;
 
@@ -225,14 +262,9 @@ export function detectIntent(message: string): IntentResult {
     }
   }
 
-  // Short messages with no matches default to product_inquiry (most common)
+  // Short messages with no matches
   if (topScore === 0) {
-    // Very short messages are likely greetings
-    if (text.length <= 10) {
-      topIntent = 'greeting';
-    } else {
-      topIntent = 'product_inquiry';
-    }
+    topIntent = text.length <= 12 ? 'greeting' : 'product_inquiry';
   }
 
   const confidence: IntentResult['confidence'] =
