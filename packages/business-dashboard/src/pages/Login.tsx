@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { apiFetch } from '../api';
 
 interface LoginResponse {
   token: string;
@@ -27,14 +26,20 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const res = await apiFetch<LoginResponse>('/auth/login', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/auth/login`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      localStorage.setItem('augustus_token', res.token);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || data.message || 'Invalid email or password.');
+        return;
+      }
+      localStorage.setItem('augustus_token', data.token);
       navigate('/dashboard');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+    } catch {
+      setError('Unable to connect. Please try again.');
     } finally {
       setLoading(false);
     }
