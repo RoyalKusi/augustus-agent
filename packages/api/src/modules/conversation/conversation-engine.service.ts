@@ -13,7 +13,7 @@ import { pool } from '../../db/client.js';
 import { config } from '../../config.js';
 import { getConversationContext, appendMessage, clearConversationContext } from '../../redis/conversation.js';
 import { checkBudget, recordInferenceCost, shouldSendUnavailabilityMessage } from '../token-budget/token-budget.service.js';
-import { sendMessage } from '../whatsapp/message-dispatcher.js';
+import { sendMessage, sendTypingIndicator } from '../whatsapp/message-dispatcher.js';
 import { createConsumerGroup, consumeWebhookEvents, reprocessPendingEvents } from '../../queue/consumer.js';
 import type { WebhookEvent } from '../../queue/producer.js';
 import { detectIntent } from './intent-detector.js';
@@ -339,6 +339,11 @@ export async function processInboundMessage(msg) {
     const shouldNotify = await shouldSendUnavailabilityMessage(businessId);
     if (shouldNotify) await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: 'Our AI assistant is temporarily unavailable. Please try again later.' });
     return { dispatched: false, skippedBudgetExhausted: true };
+  }
+
+  // Show typing indicator immediately — best-effort, non-blocking
+  if (messageId) {
+    void sendTypingIndicator(businessId, messageId);
   }
 
   // Use session_started_at (actual schema column)

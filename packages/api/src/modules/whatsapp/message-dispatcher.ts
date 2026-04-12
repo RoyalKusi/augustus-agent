@@ -296,7 +296,42 @@ export async function sendMessage(
   return { success: true, messageId };
 }
 
-// ── Media size fallback (Req 6.5) ─────────────────────────────────────────────
+/**
+ * Send a typing indicator to the customer while a response is being generated.
+ * Also marks the inbound message as read.
+ * The indicator auto-dismisses after 25 seconds or when a message is sent.
+ * Per Meta docs: POST /{phoneNumberId}/messages with status=read + typing_indicator
+ */
+export async function sendTypingIndicator(
+  businessId: string,
+  inboundMessageId: string,
+): Promise<void> {
+  const integration = await getCredentials(businessId);
+  if (!integration) return;
+
+  const { phoneNumberId, accessToken } = integration;
+  const graphVersion = process.env.META_GRAPH_API_VERSION ?? config.meta.graphApiVersion;
+  const url = `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`;
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: inboundMessageId,
+        typing_indicator: { type: 'text' },
+      }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    // Non-fatal — typing indicator is best-effort
+  }
+}
 
 const MEDIA_SIZE_LIMIT_BYTES = 16 * 1024 * 1024; // 16 MB
 

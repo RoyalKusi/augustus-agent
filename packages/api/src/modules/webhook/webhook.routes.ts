@@ -328,6 +328,11 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           }
 
           app.log.info({ businessId, messageId }, '[Webhook] Processing message directly');
+          // Show typing indicator immediately while processing
+          if (messageId) {
+            const { sendTypingIndicator } = await import('../whatsapp/message-dispatcher.js');
+            void sendTypingIndicator(businessId, messageId);
+          }
           await processInboundMessage({
             businessId,
             customerWaNumber: message.from ?? '',
