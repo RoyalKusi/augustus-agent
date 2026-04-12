@@ -367,7 +367,7 @@ export async function pollPaynowStatus(orderId: string): Promise<void> {
 // ─── Task 9.3: Receipt Dispatch (Property 21) ────────────────────────────────
 
 /**
- * Send a WhatsApp receipt message to the customer.
+ * Send a WhatsApp receipt message to the customer after payment is confirmed.
  * Property 21: receipt must contain order_reference, items, total_amount, timestamp.
  */
 export async function dispatchReceipt(
@@ -380,15 +380,28 @@ export async function dispatchReceipt(
   timestamp: Date,
 ): Promise<void> {
   const itemLines = items
-    .map((i) => `  • ${i.productName} x${i.quantity} @ ${currency} ${i.unitPrice.toFixed(2)}`)
+    .map((i) => {
+      const lineTotal = (i.unitPrice * i.quantity).toFixed(2);
+      return `  • ${i.productName}\n    Qty: ${i.quantity}  ×  ${currency} ${i.unitPrice.toFixed(2)}  =  ${currency} ${lineTotal}`;
+    })
     .join('\n');
 
+  const dateStr = timestamp.toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
   const body =
-    `✅ Payment Confirmed!\n\n` +
-    `Order Reference: ${orderReference}\n` +
-    `Items:\n${itemLines}\n` +
-    `Total: ${currency} ${totalAmount.toFixed(2)}\n` +
-    `Date: ${timestamp.toISOString()}`;
+    `✅ *Payment Confirmed!*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `📋 *Order Reference:* ${orderReference}\n` +
+    `📅 *Date:* ${dateStr}\n\n` +
+    `🛍️ *Items Purchased:*\n${itemLines}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *Total Paid: ${currency} ${totalAmount.toFixed(2)}*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Thank you for your purchase! 🎉\n` +
+    `Your order is being processed. We'll notify you once it's on its way.`;
 
   await sendMessage(businessId, { type: 'text', to: customerWaNumber, body });
 }
@@ -928,6 +941,37 @@ export function buildPaymentSettingsResponse(
   return { inChatPaymentsEnabled: enabled, externalPaymentDetails: details };
 }
 
+/**
+ * Build an order confirmation message sent immediately when a Paynow link is generated.
+ * This is the "pending payment" state — before the customer pays.
+ */
+export function buildOrderConfirmationMessage(
+  orderReference: string,
+  items: OrderItem[],
+  totalAmount: number,
+  currency: string,
+  expiresInMinutes = 15,
+): string {
+  const itemLines = items
+    .map((i) => {
+      const lineTotal = (i.unitPrice * i.quantity).toFixed(2);
+      return `  • ${i.productName}  ×${i.quantity}  —  ${currency} ${lineTotal}`;
+    })
+    .join('\n');
+
+  return (
+    `🛒 *Order Placed!*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `📋 *Ref:* ${orderReference}\n\n` +
+    `${itemLines}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *Total: ${currency} ${totalAmount.toFixed(2)}*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `⏱️ Payment link expires in *${expiresInMinutes} minutes*.\n` +
+    `Complete payment to confirm your order.`
+  );
+}
+
 // ─── Task 18.5: Invoice Message Builder ──────────────────────────────────────
 
 export interface InvoiceMessage {
@@ -946,7 +990,10 @@ export interface InvoiceMessage {
  */
 export function buildInvoiceMessage(invoice: InvoiceMessage): string {
   const itemLines = invoice.items
-    .map((i) => `  • ${i.productName} x${i.quantity} @ ${invoice.currency} ${i.unitPrice.toFixed(2)}`)
+    .map((i) => {
+      const lineTotal = (i.unitPrice * i.quantity).toFixed(2);
+      return `  • ${i.productName}\n    Qty: ${i.quantity}  ×  ${invoice.currency} ${i.unitPrice.toFixed(2)}  =  ${invoice.currency} ${lineTotal}`;
+    })
     .join('\n');
 
   // Support both new structured format { methods: [...] } and legacy flat format
@@ -959,28 +1006,37 @@ export function buildInvoiceMessage(invoice: InvoiceMessage): string {
       .filter((m) => m.account)
       .map((m) => {
         const providerLabel = m.label || m.bank_name || m.provider || 'Payment';
-        let line = `  • ${providerLabel}: ${m.account}`;
-        if (m.name) line += ` (${m.name})`;
-        if (m.branch) line += `, ${m.branch} Branch`;
-        if (m.instructions) line += `\n    ${m.instructions}`;
+        let line = `  📌 *${providerLabel}*\n     Account: ${m.account}`;
+        if (m.name) line += `\n     Name: ${m.name}`;
+        if (m.branch) line += `\n     Branch: ${m.branch}`;
+        if (m.instructions) line += `\n     Note: ${m.instructions}`;
         return line;
       })
-      .join('\n');
+      .join('\n\n');
   } else {
-    // Legacy flat format fallback
     paymentLines = Object.entries(details ?? {})
       .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
-      .map(([k, v]) => `  ${k.replace(/_/g, ' ')}: ${v}`)
+      .map(([k, v]) => `  • ${k.replace(/_/g, ' ')}: ${v}`)
       .join('\n');
   }
 
+  const dateStr = new Date().toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
   return (
-    `🧾 Invoice\n\n` +
-    `Order Reference: ${invoice.orderReference}\n` +
-    `Items:\n${itemLines}\n` +
-    `Total: ${invoice.currency} ${invoice.totalAmount.toFixed(2)}\n\n` +
-    `Payment Methods:\n${paymentLines}\n\n` +
-    `Please make payment using one of the methods above and reference your order number.`
+    `🧾 *INVOICE*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `📋 *Order Reference:* ${invoice.orderReference}\n` +
+    `📅 *Date:* ${dateStr}\n\n` +
+    `🛍️ *Order Details:*\n${itemLines}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *Total Due: ${invoice.currency} ${invoice.totalAmount.toFixed(2)}*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `💳 *Payment Instructions:*\n${paymentLines}\n\n` +
+    `⚠️ *Important:* Please use *${invoice.orderReference}* as your payment reference.\n\n` +
+    `Once payment is made, reply "PAID" and we'll confirm your order. Thank you! 🙏`
   );
 }
 

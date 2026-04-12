@@ -464,22 +464,32 @@ export async function processInboundMessage(msg) {
           if (orderItems.length > 0) {
             const currency = orderDetails.currency ?? 'USD';
             let paymentUrl: string | null = null;
+            let orderRef = '';
             try {
               const result = await generatePaynowLink(businessId, customerWaNumber, orderItems, currency, conversationId);
               paymentUrl = result.paymentUrl;
+              orderRef = result.order.orderReference;
             } catch (payErr) {
               console.error('[ConversationEngine] generatePaynowLink failed:', payErr);
             }
             if (paymentUrl) {
               const total = orderItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-              const itemSummary = orderItems.map(i => `• ${i.productName} x${i.quantity} — ${currency} ${(i.unitPrice * i.quantity).toFixed(2)}`).join('\n');
+              // Send order confirmation first, then payment link
+              const { buildOrderConfirmationMessage } = await import('../payment/payment.service.js');
+              const confirmationMsg = buildOrderConfirmationMessage(
+                orderRef,
+                orderItems,
+                total,
+                currency,
+              );
+              await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: confirmationMsg });
+              // Then send the payment link
               await sendMessage(businessId, {
                 type: 'payment_link',
                 to: customerWaNumber,
-                body: `🛒 *Order Summary*\n${itemSummary}\n\n*Total: ${currency} ${total.toFixed(2)}*\n\nClick the link below to complete your secure payment:`,
+                body: `👆 Tap the link below to pay securely:`,
                 paymentUrl,
-              });
-            } else {
+              });            } else {
               await sendMessage(businessId, {
                 type: 'text',
                 to: customerWaNumber,
