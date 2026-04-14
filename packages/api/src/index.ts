@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, createReadStream } from 'fs';
+import { existsSync, createReadStream, readFileSync } from 'fs';
 import { runMigrations } from './db/client.js';
 import { authRoutes } from './modules/auth/index.js';
 import { subscriptionRoutes } from './modules/subscription/index.js';
@@ -119,29 +119,15 @@ const start = async () => {
         });
 
         const indexHtmlPath = join(businessDist, 'index.html');
+        const indexHtml = readFileSync(indexHtmlPath); // read once at startup
 
-        // Intercept browser page navigations (Accept: text/html) on all non-API paths
+        // SPA fallback: any unmatched GET that accepts HTML returns index.html
         // This handles hard refreshes on SPA routes like /dashboard/conversations
-        const apiPrefixes = ['/auth/', '/dashboard/', '/whatsapp/', '/payments/', '/conversations/',
-          '/webhooks/', '/admin/', '/catalogue/', '/training/', '/subscription/', '/health'];
-        app.addHook('onRequest', async (request, reply) => {
-          const accept = request.headers['accept'] ?? '';
-          const path = request.url.split('?')[0];
-          const isBrowserNav = accept.includes('text/html') && request.method === 'GET';
-          if (!isBrowserNav) return;
-          // If it's a browser nav to an API path, serve index.html so the SPA handles it
-          const isApiPath = apiPrefixes.some((p) => path.startsWith(p));
-          if (isApiPath) {
-            const { readFile } = await import('fs/promises');
-            const html = await readFile(indexHtmlPath);
-            reply.type('text/html').send(html);
-          }
-        });
-
-        // SPA fallback: any unmatched GET returns index.html for client-side routing
         app.setNotFoundHandler((req, reply) => {
-          if (req.method === 'GET') {
-            reply.type('text/html').send(createReadStream(indexHtmlPath));
+          if (req.method === 'GET' && (req.headers['accept'] ?? '').includes('text/html')) {
+            reply.type('text/html').send(indexHtml);
+          } else if (req.method === 'GET') {
+            reply.type('text/html').send(indexHtml);
           } else {
             reply.status(404).send({ error: 'Not found' });
           }
