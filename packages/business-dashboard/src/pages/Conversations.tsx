@@ -35,11 +35,11 @@ export default function Conversations() {
     try {
       const data = await apiFetch<{ conversations: Conversation[] }>('/dashboard/conversations');
       setConversations(data.conversations ?? []);
-      setError(''); // clear any previous error on success
+      setError('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      // Don't show error for auth failures — apiFetch already redirects to login
-      if (!msg.includes('session') && !msg.includes('expired') && !msg.includes('permission')) {
+      // apiFetch already redirects to /login on 401 — don't show error for that
+      if (!msg.includes('session has expired')) {
         setError(msg || 'Failed to load conversations');
       }
     } finally {
