@@ -9,6 +9,7 @@ import SubscriptionMetrics from './pages/SubscriptionMetrics';
 import Withdrawals from './pages/Withdrawals';
 import TokenOverride from './pages/TokenOverride';
 import PlanManagement from './pages/PlanManagement';
+import PromoCodes from './pages/PromoCodes';
 import ApiKeyStatus from './pages/ApiKeyStatus';
 import SupportTickets from './pages/SupportTickets';
 
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="support" element={<SupportTickets />} />
           <Route path="token-override" element={<TokenOverride />} />
           <Route path="plan-management" element={<PlanManagement />} />
+          <Route path="promo-codes" element={<PromoCodes />} />
           <Route path="api-keys" element={<ApiKeyStatus />} />
         </Route>
       </Routes>

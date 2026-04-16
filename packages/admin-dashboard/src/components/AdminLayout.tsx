@@ -7,6 +7,7 @@ const navItems = [
   { to: '/admin/withdrawals', label: 'Withdrawals' },
   { to: '/admin/support', label: 'Support Tickets' },
   { to: '/admin/plan-management', label: 'Plan Management' },
+  { to: '/admin/promo-codes', label: 'Promo Codes' },
   { to: '/admin/api-keys', label: 'API Key Status' },
 ];
 

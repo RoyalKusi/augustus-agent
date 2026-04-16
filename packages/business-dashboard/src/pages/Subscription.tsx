@@ -70,6 +70,9 @@ export default function Subscription() {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoValidation, setPromoValidation] = useState<{ valid: boolean; message: string; discountedPrice?: number; discountAmount?: number; promoCodeId?: string } | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
 
   const loadSub = () =>
     apiFetch<SubscriptionInfo>('/dashboard/subscription')
@@ -148,9 +151,14 @@ export default function Subscription() {
     setMsg('');
     setLoading(true);
     try {
+      const body: Record<string, unknown> = { tier: selectedPlan };
+      if (promoValidation?.valid && promoValidation.promoCodeId) {
+        body.promoCode = promoCode;
+        body.promoCodeId = promoValidation.promoCodeId;
+      }
       const result = await apiFetch<PaynowInitResult>('/subscription/initiate-payment', {
         method: 'POST',
-        body: JSON.stringify({ tier: selectedPlan }),
+        body: JSON.stringify(body),
       });
       if (!result.paymentUrl) {
         setError('Failed to get payment URL from Paynow. Please try again.');
@@ -161,6 +169,25 @@ export default function Subscription() {
       setError(err instanceof Error ? err.message : 'Failed to initiate payment');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkPromo = async () => {
+    if (!promoCode.trim() || !selectedPlan) return;
+    const plan = plans.find(p => p.tier === selectedPlan);
+    if (!plan) return;
+    setPromoChecking(true);
+    setPromoValidation(null);
+    try {
+      const result = await apiFetch<{ valid: boolean; message: string; discountedPrice?: number; discountAmount?: number; promoCodeId?: string }>('/subscription/validate-promo', {
+        method: 'POST',
+        body: JSON.stringify({ code: promoCode, tier: selectedPlan, originalPrice: plan.priceUsd }),
+      });
+      setPromoValidation(result);
+    } catch {
+      setPromoValidation({ valid: false, message: 'Failed to validate code.' });
+    } finally {
+      setPromoChecking(false);
     }
   };
 
@@ -347,6 +374,35 @@ export default function Subscription() {
         })}
       </div>
 
+      {/* Promo code */}
+      <div style={{ marginBottom: 16, padding: '14px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: 8 }}>
+          🏷️ Have a promo code?
+        </label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={promoCode}
+            onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoValidation(null); }}
+            placeholder="Enter code (e.g. LAUNCH50)"
+            style={{ flex: 1, padding: '8px 12px', fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e0', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase' }}
+          />
+          <button
+            type="button"
+            onClick={checkPromo}
+            disabled={!promoCode.trim() || !selectedPlan || promoChecking}
+            style={{ padding: '8px 16px', background: '#3182ce', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (!promoCode.trim() || !selectedPlan) ? 0.5 : 1 }}
+          >
+            {promoChecking ? '…' : 'Apply'}
+          </button>
+        </div>
+        {promoValidation && (
+          <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, background: promoValidation.valid ? '#f0fff4' : '#fff5f5', border: `1px solid ${promoValidation.valid ? '#9ae6b4' : '#feb2b2'}`, fontSize: 13, color: promoValidation.valid ? '#276749' : '#c53030', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {promoValidation.valid ? '✅' : '❌'} {promoValidation.message}
+          </div>
+        )}
+      </div>
+
       {/* CTA button */}
       <button
         onClick={subscribe}
@@ -395,7 +451,9 @@ export default function Subscription() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
             </svg>
-            Pay with Paynow
+            {promoValidation?.valid && promoValidation.discountedPrice !== undefined
+              ? `Pay $${promoValidation.discountedPrice.toFixed(2)} with Paynow`
+              : 'Pay with Paynow'}
           </>
         )}
       </button>

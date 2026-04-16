@@ -28,6 +28,13 @@ import {
   sendLoginOtp,
 } from './admin.service.js';
 import { pool } from '../../db/client.js';
+import {
+  createPromoCode,
+  listPromoCodes,
+  updatePromoCode,
+  deletePromoCode,
+  getPromoMetrics,
+} from '../promo/promo.service.js';
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // ─── Task 13.1: Operator auth ───────────────────────────────────────────────
