@@ -582,7 +582,7 @@ export async function confirmPayment(orderId: string, paynowReference: string): 
       unitPrice: Number(i.unit_price),
     }));
 
-    // Task 9.3 — Property 21: dispatch receipt
+    // Task 9.3 — Property 21: dispatch receipt to customer
     await dispatchReceipt(
       order.business_id,
       order.customer_wa_number,
@@ -592,11 +592,86 @@ export async function confirmPayment(orderId: string, paynowReference: string): 
       order.currency,
       new Date(),
     );
+
+    // Notify business owner on their personal WhatsApp number (best-effort)
+    void notifyBusinessOwnerOrderPaid(
+      order.business_id,
+      order.order_reference,
+      order.customer_wa_number,
+      receiptItems,
+      totalAmount,
+      order.currency,
+    );
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
+  }
+}
+
+// ─── Business owner order notification ───────────────────────────────────────
+
+/**
+ * Send a WhatsApp notification to the business owner's personal number
+ * when an order is paid. Best-effort — never throws.
+ */
+async function notifyBusinessOwnerOrderPaid(
+  businessId: string,
+  orderReference: string,
+  customerWaNumber: string,
+  items: OrderItem[],
+  totalAmount: number,
+  currency: string,
+): Promise<void> {
+  try {
+    const result = await pool.query<{ notification_wa_number: string | null }>(
+      `SELECT notification_wa_number FROM businesses WHERE id = $1`,
+      [businessId],
+    );
+    const notifNumber = result.rows[0]?.notification_wa_number;
+    if (!notifNumber) return;
+
+    const itemSummary = items.map(i => `${i.productName} ×${i.quantity}`).join(', ');
+    const body =
+      `🛒 *New Order Paid!*\n\n` +
+      `📋 Ref: ${orderReference}\n` +
+      `👤 Customer: ${customerWaNumber}\n` +
+      `🛍️ Items: ${itemSummary}\n` +
+      `💰 Total: ${currency} ${totalAmount.toFixed(2)}\n\n` +
+      `Check your Orders dashboard for details.`;
+
+    await sendMessage(businessId, { type: 'text', to: notifNumber, body });
+  } catch (err) {
+    console.warn('[Notification] Failed to notify business owner of order:', err);
+  }
+}
+
+/**
+ * Send a WhatsApp notification to the business owner when a high-intent lead is detected.
+ * Best-effort — never throws.
+ */
+export async function notifyBusinessOwnerLeadDetected(
+  businessId: string,
+  customerWaNumber: string,
+  productName: string,
+): Promise<void> {
+  try {
+    const result = await pool.query<{ notification_wa_number: string | null }>(
+      `SELECT notification_wa_number FROM businesses WHERE id = $1`,
+      [businessId],
+    );
+    const notifNumber = result.rows[0]?.notification_wa_number;
+    if (!notifNumber) return;
+
+    const body =
+      `🔥 *Hot Lead Alert!*\n\n` +
+      `A customer (${customerWaNumber}) is ready to buy *${productName}*.\n\n` +
+      `Check Conversations to follow up or take over.`;
+
+    await sendMessage(businessId, { type: 'text', to: notifNumber, body });
+  } catch (err) {
+    console.warn('[Notification] Failed to notify business owner of lead:', err);
   }
 }
 

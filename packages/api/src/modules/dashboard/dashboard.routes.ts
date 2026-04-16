@@ -216,4 +216,37 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // GET /dashboard/notification-number — get the business owner's notification WhatsApp number
+  app.get('/dashboard/notification-number', { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const result = await pool.query<{ notification_wa_number: string | null }>(
+        `SELECT notification_wa_number FROM businesses WHERE id = $1`,
+        [request.businessId],
+      );
+      return reply.send({ notificationWaNumber: result.rows[0]?.notification_wa_number ?? null });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch notification number.';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // PUT /dashboard/notification-number — save the business owner's notification WhatsApp number
+  app.put('/dashboard/notification-number', { preHandler: authenticate }, async (request, reply) => {
+    const { notificationWaNumber } = request.body as { notificationWaNumber?: string };
+    // Sanitise: strip non-digits except leading +
+    const cleaned = notificationWaNumber
+      ? notificationWaNumber.replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/\+/g, '')
+      : null;
+    try {
+      await pool.query(
+        `UPDATE businesses SET notification_wa_number = $1, updated_at = NOW() WHERE id = $2`,
+        [cleaned || null, request.businessId],
+      );
+      return reply.send({ notificationWaNumber: cleaned || null });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save notification number.';
+      return reply.status(500).send({ error: message });
+    }
+  });
 }

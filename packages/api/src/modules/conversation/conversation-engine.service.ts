@@ -467,6 +467,19 @@ export async function processInboundMessage(msg) {
 
   // Dispatch payment link if Claude triggered a purchase
   if (action.type === 'payment' && action.orderDetails) {
+    // Notify business owner of high-intent lead (best-effort, fire-and-forget)
+    const orderDetails0 = action.orderDetails as { items?: Array<{ product_id: string; quantity: number }> };
+    if ((orderDetails0.items ?? []).length > 0) {
+      const firstProductId = orderDetails0.items![0].product_id;
+      pool.query<{ name: string }>('SELECT name FROM products WHERE id = $1', [firstProductId])
+        .then(async (r) => {
+          if (r.rows[0]?.name) {
+            const { notifyBusinessOwnerLeadDetected } = await import('../payment/payment.service.js');
+            void notifyBusinessOwnerLeadDetected(businessId, customerWaNumber, r.rows[0].name);
+          }
+        })
+        .catch(() => {});
+    }
     try {
       const settings = paymentSettings;
       const orderDetails = action.orderDetails as { items?: Array<{ product_id: string; quantity: number }>; total?: number; currency?: string };

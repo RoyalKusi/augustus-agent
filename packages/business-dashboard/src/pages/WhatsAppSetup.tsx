@@ -44,6 +44,9 @@ export default function WhatsAppSetup() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [manual, setManual] = useState({ wabaId: '', phoneNumberId: '', accessToken: '', webhookVerifyToken: '' });
+  const [notifNumber, setNotifNumber] = useState('');
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifMsg, setNotifMsg] = useState('');
   const sdkInitialised = useRef(false);
 
   useEffect(() => {
@@ -78,6 +81,9 @@ export default function WhatsAppSetup() {
       apiFetch<Integration>('/whatsapp/integration').then(setIntegration).catch(() => {}),
       apiFetch<EmbeddedSignupConfig>('/whatsapp/integration/embedded-signup-config')
         .then((cfg) => { setSdkConfig(cfg); initSdk(cfg); })
+        .catch(() => {}),
+      apiFetch<{ notificationWaNumber: string | null }>('/dashboard/notification-number')
+        .then((r) => setNotifNumber(r.notificationWaNumber ?? ''))
         .catch(() => {}),
     ]).finally(() => setPageLoading(false));
   }, []);
@@ -177,6 +183,21 @@ export default function WhatsAppSetup() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Disconnect failed.');
     } finally { setLoading(false); }
+  };
+
+  const saveNotifNumber = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNotifSaving(true); setNotifMsg('');
+    try {
+      await apiFetch('/dashboard/notification-number', {
+        method: 'PUT',
+        body: JSON.stringify({ notificationWaNumber: notifNumber }),
+      });
+      setNotifMsg('Saved.');
+      setTimeout(() => setNotifMsg(''), 3000);
+    } catch (err: unknown) {
+      setNotifMsg(err instanceof Error ? err.message : 'Failed to save.');
+    } finally { setNotifSaving(false); }
   };
 
   const isActive = integration?.status === 'active';
@@ -292,6 +313,47 @@ export default function WhatsAppSetup() {
           <button onClick={() => setView('manual')} style={linkBtn}>update manually</button>
         </p>
       )}
+
+      {/* Notification number section */}
+      <div style={{ marginTop: 32, padding: '20px 24px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3182ce" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+          </svg>
+          <h3 style={{ margin: 0, fontSize: 15, color: '#1a202c' }}>Order & Lead Notifications</h3>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#718096', lineHeight: 1.6 }}>
+          Enter your personal WhatsApp number to receive instant alerts when a customer places an order or shows strong buying intent. Only important events — no spam.
+        </p>
+        <form onSubmit={saveNotifNumber} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={labelStyle}>Your WhatsApp Number</label>
+            <p style={hintStyle}>Include country code, e.g. 263771234567 (no + or spaces)</p>
+            <input
+              type="tel"
+              value={notifNumber}
+              onChange={(e) => setNotifNumber(e.target.value.replace(/[^\d+]/g, ''))}
+              placeholder="263771234567"
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 2 }}>
+            <button type="submit" disabled={notifSaving} style={primaryBtn}>
+              {notifSaving ? 'Saving…' : 'Save'}
+            </button>
+            {notifMsg && (
+              <span style={{ fontSize: 13, color: notifMsg === 'Saved.' ? '#276749' : '#c53030' }}>
+                {notifMsg}
+              </span>
+            )}
+          </div>
+        </form>
+        {notifNumber && (
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: '#a0aec0' }}>
+            Notifications will be sent to <strong style={{ color: '#4a5568' }}>+{notifNumber}</strong>
+          </p>
+        )}
+      </div>
     </div>
   );
 }
