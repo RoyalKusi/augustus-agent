@@ -81,12 +81,13 @@ export class AuthService {
   async login(email: string, password: string): Promise<{ token: string; expiresAt: Date }> {
     const result = await pool.query<{
       id: string;
+      name: string;
       password_hash: string;
       email: string;
       failed_login_attempts: number;
       locked_until: Date | null;
     }>(
-      `SELECT id, password_hash, email, failed_login_attempts, locked_until
+      `SELECT id, name, password_hash, email, failed_login_attempts, locked_until
        FROM businesses WHERE email = $1`,
       [email.toLowerCase().trim()],
     );
@@ -115,7 +116,7 @@ export class AuthService {
     );
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const token = signToken({ businessId: business.id, email: business.email });
+    const token = signToken({ businessId: business.id, email: business.email, name: business.name });
     return { token, expiresAt };
   }
 

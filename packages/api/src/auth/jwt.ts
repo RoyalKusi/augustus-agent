@@ -4,6 +4,7 @@ import { config } from '../config.js';
 export interface JwtPayload {
   businessId: string;
   email: string;
+  name?: string;
 }
 
 export function signToken(payload: JwtPayload): string {

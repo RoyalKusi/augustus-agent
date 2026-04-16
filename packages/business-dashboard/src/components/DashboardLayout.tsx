@@ -1,6 +1,16 @@
 import { NavLink, Outlet, useNavigate, Navigate } from 'react-router-dom';
 import CreditUsageWidget from './CreditUsageWidget';
 
+// Decode JWT payload without verifying signature (client-side display only)
+function decodeToken(token: string): { name?: string; email?: string } {
+  try {
+    const payload = token.split('.')[1];
+    return JSON.parse(atob(payload));
+  } catch {
+    return {};
+  }
+}
+
 // Inline SVG icons — no external dependency needed
 const icons: Record<string, JSX.Element> = {
   Subscription: (
@@ -77,6 +87,15 @@ export default function DashboardLayout() {
 
   if (!token) return <Navigate to="/login" replace />;
 
+  const { name, email } = decodeToken(token);
+  const displayName = name ?? email ?? 'Account';
+  const initials = displayName
+    .split(' ')
+    .map((w: string) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
   const logout = () => {
     localStorage.removeItem('augustus_token');
     navigate('/login');
@@ -99,6 +118,28 @@ export default function DashboardLayout() {
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
           Augustus
+        </div>
+
+        {/* User account card */}
+        <div style={{ margin: '0 12px 12px', padding: '10px 12px', background: 'rgba(255,255,255,0.06)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #63b3ed, #3182ce)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
+          }}>
+            {initials}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {displayName}
+            </div>
+            {email && name && (
+              <div style={{ fontSize: 11, color: '#718096', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {email}
+              </div>
+            )}
+          </div>
         </div>
         <nav style={{ flex: 1 }}>
           {navItems.map((item) => (
