@@ -93,6 +93,11 @@ export default function Subscription() {
     }
   }, [sub]);
 
+  // Clear promo validation whenever the selected plan changes
+  useEffect(() => {
+    setPromoValidation(null);
+  }, [selectedPlan]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('paynow_ref');
