@@ -150,7 +150,7 @@ export async function getActiveConversations(
 
   const conversations: ConversationSummary[] = result.rows.map((row) => ({
     id: row.id,
-    customerWaNumber: maskWaNumber(row.customer_wa_number ?? '0000'),
+    customerWaNumber: row.customer_wa_number ?? '0000',  // full number for business owner
     status: row.status,
     messageCount: row.message_count,
     manualInterventionActive: row.manual_intervention_active,
