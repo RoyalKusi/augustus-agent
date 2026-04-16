@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import CreditUsageWidget from './CreditUsageWidget';
+import { isTokenExpired, redirectToLogin } from '../api';
 
 // Decode JWT payload without verifying signature (client-side display only)
 function decodeToken(token: string): { name?: string; email?: string } {
@@ -85,7 +87,22 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const token = localStorage.getItem('augustus_token');
 
-  if (!token) return <Navigate to="/login" replace />;
+  // Check token expiry on mount and on every render — redirect immediately
+  // before any child components fire their API calls
+  useEffect(() => {
+    if (isTokenExpired()) {
+      redirectToLogin();
+    }
+    // Also set up a periodic check every 60s so long-open tabs auto-logout
+    const interval = setInterval(() => {
+      if (isTokenExpired()) {
+        redirectToLogin();
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!token || isTokenExpired()) return <Navigate to="/login" replace />;
 
   const { name, email } = decodeToken(token);
   const displayName = name ?? email ?? 'Account';

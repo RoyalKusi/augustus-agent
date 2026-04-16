@@ -1,5 +1,27 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
+// Check if the stored JWT token is expired (client-side, no network call)
+export function isTokenExpired(): boolean {
+  const token = localStorage.getItem('augustus_token');
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    // exp is in seconds; Date.now() is in ms
+    return payload.exp ? payload.exp * 1000 < Date.now() : false;
+  } catch {
+    return true;
+  }
+}
+
+// Redirect to login and clear token
+export function redirectToLogin(): void {
+  localStorage.removeItem('augustus_token');
+  if (!window.location.pathname.startsWith('/login') &&
+      !window.location.pathname.startsWith('/register')) {
+    window.location.href = '/login';
+  }
+}
+
 // User-friendly messages for common HTTP status codes
 function friendlyError(status: number, rawMessage: string): string {
   if (status === 401) return 'Your session has expired. Please log in again.';
@@ -15,6 +37,12 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  // Check expiry before making the request — avoids showing errors on expired sessions
+  if (isTokenExpired()) {
+    redirectToLogin();
+    throw new Error('Your session has expired. Please log in again.');
+  }
+
   const token = localStorage.getItem('augustus_token');
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -38,12 +66,7 @@ export async function apiFetch<T = unknown>(
     }
 
     if (res.status === 401) {
-      localStorage.removeItem('augustus_token');
-      // Only redirect if not already on an auth page to avoid loops
-      if (!window.location.pathname.startsWith('/login') &&
-          !window.location.pathname.startsWith('/register')) {
-        window.location.href = '/login';
-      }
+      redirectToLogin();
     }
 
     throw new Error(friendlyError(res.status, rawMessage));
