@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { apiFetch } from '../api';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ export default function Catalogue() {
   const excelRef = useRef<HTMLInputElement>(null);
 
   const token = localStorage.getItem('augustus_token') ?? '';
+  const isMobile = useIsMobile();
 
   const loadProducts = () =>
     apiFetch<{ products: Product[] }>('/catalogue/products')
@@ -315,7 +317,7 @@ export default function Catalogue() {
         <>
           <h3 style={{ marginTop: 0 }}>{editId ? 'Edit Product' : 'Add Product'}</h3>
           <form onSubmit={submitProduct} style={formStyle}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={labelStyle}>Name *</label>
                 <input value={form.name} onChange={setF('name')} required style={inputStyle} placeholder="Product name" />
@@ -391,7 +393,8 @@ export default function Catalogue() {
 
           {/* Products Table */}
           <h3>Products ({products.length})</h3>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: isMobile ? 500 : undefined }}>
             <thead>
               <tr>{['Images', 'Name', 'Price', 'Stock', 'Category', 'Actions'].map((h) => <th key={h} style={th}>{h}</th>)}</tr>
             </thead>
@@ -443,6 +446,7 @@ export default function Catalogue() {
               {products.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#a0aec0', textAlign: 'center', padding: 24 }}>No products yet</td></tr>}
             </tbody>
           </table>
+          </div>
           <p style={{ fontSize: 12, color: '#718096', marginTop: 4 }}>Click any price, stock, or category cell to edit inline</p>
         </>
       )}
@@ -495,7 +499,7 @@ export default function Catalogue() {
         <div>
           <h3 style={{ marginTop: 0 }}>Create Promo Combo</h3>
           <form onSubmit={submitCombo} style={formStyle}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10 }}>
               <div>
                 <label style={labelStyle}>Combo Name *</label>
                 <input value={comboForm.name} onChange={(e) => setComboForm((f) => ({ ...f, name: e.target.value }))} required style={inputStyle} />
