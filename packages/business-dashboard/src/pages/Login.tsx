@@ -47,7 +47,12 @@ export default function Login() {
 
   return (
     <div style={containerStyle}>
-      <h2>Login</h2>
+      {/* Logo */}
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <img src="/logo.svg" alt="Augustus" width={56} height={56} style={{ borderRadius: '50%' }} />
+        <div style={{ marginTop: 10, fontWeight: 700, fontSize: 20, color: '#1a202c', letterSpacing: 0.5 }}>Augustus</div>
+        <div style={{ fontSize: 13, color: '#718096', marginTop: 2 }}>AI Sales Assistant</div>
+      </div>
       {(stateMsg || verifiedMsg) && (
         <p style={{ color: verified === 'error' ? '#c53030' : '#276749', background: verified === 'error' ? '#fff5f5' : '#f0fff4', padding: '8px 12px', borderRadius: 4 }}>
           {stateMsg || verifiedMsg}
