@@ -1,4 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { NotificationBadge } from './NotificationBadge';
+import { NotificationCenter } from './NotificationCenter';
 
 const navItems = [
   { to: '/admin/businesses', label: 'Businesses' },
@@ -9,10 +12,12 @@ const navItems = [
   { to: '/admin/plan-management', label: 'Plan Management' },
   { to: '/admin/promo-codes', label: 'Promo Codes' },
   { to: '/admin/api-keys', label: 'API Key Status' },
+  { to: '/admin/notifications', label: 'Notifications' },
 ];
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
 
   const logout = () => {
     localStorage.removeItem('augustus_operator_token');
@@ -68,9 +73,28 @@ export default function AdminLayout() {
           Logout
         </button>
       </aside>
-      <main style={{ flex: 1, padding: 24, background: '#f7fafc' }}>
-        <Outlet />
-      </main>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Top Bar with Notification Badge */}
+        <div style={{ 
+          background: '#fff', 
+          borderBottom: '1px solid #e2e8f0', 
+          padding: '12px 24px',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          position: 'relative'
+        }}>
+          <NotificationBadge onClick={() => setNotificationCenterOpen(!notificationCenterOpen)} />
+          <NotificationCenter 
+            isOpen={notificationCenterOpen} 
+            onClose={() => setNotificationCenterOpen(false)}
+          />
+        </div>
+        <main style={{ flex: 1, padding: 24, background: '#f7fafc' }}>
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
+

@@ -12,6 +12,7 @@ import PlanManagement from './pages/PlanManagement';
 import PromoCodes from './pages/PromoCodes';
 import ApiKeyStatus from './pages/ApiKeyStatus';
 import SupportTickets from './pages/SupportTickets';
+import { NotificationHistory } from './pages/NotificationHistory';
 
 export default function App() {
   const basename = import.meta.env.PROD ? '/admin-app' : '';
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="plan-management" element={<PlanManagement />} />
           <Route path="promo-codes" element={<PromoCodes />} />
           <Route path="api-keys" element={<ApiKeyStatus />} />
+          <Route path="notifications" element={<NotificationHistory />} />
         </Route>
       </Routes>
     </BrowserRouter>
