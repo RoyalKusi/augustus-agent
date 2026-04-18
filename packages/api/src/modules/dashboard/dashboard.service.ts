@@ -450,14 +450,23 @@ export async function createSupportTicket(
   // Task 14.3: Send acknowledgement email (best-effort, non-blocking)
   void (async () => {
     try {
-      const bizResult = await pool.query<{ email: string }>(
-        `SELECT email FROM businesses WHERE id = $1`,
+      const bizResult = await pool.query<{ email: string; name: string }>(
+        `SELECT email, name FROM businesses WHERE id = $1`,
         [businessId],
       );
       const email = bizResult.rows[0]?.email;
+      const businessName = bizResult.rows[0]?.name;
       if (email) {
         await sendSupportTicketAck(email, reference, subject);
       }
+      
+      // Send in-app notification to admins
+      const { notifySupportTicket } = await import('../notification/in-app-notification.helpers.js');
+      await notifySupportTicket('admin', '', 'created', {
+        ticketReference: reference,
+        subject,
+        businessName: businessName || 'Unknown',
+      });
     } catch (err) {
       console.error('[Dashboard] Failed to send support ticket ack email:', err);
     }

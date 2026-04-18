@@ -602,6 +602,13 @@ export async function confirmPayment(orderId: string, paynowReference: string): 
       totalAmount,
       order.currency,
     );
+
+    // Send in-app notification for order payment
+    const { notifyPaymentEvent } = await import('../notification/in-app-notification.helpers.js');
+    void notifyPaymentEvent(order.business_id, 'order_completed', {
+      amount: totalAmount,
+      reference: order.order_reference,
+    }).catch(err => console.error('[Payment] Failed to send notification:', err));
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

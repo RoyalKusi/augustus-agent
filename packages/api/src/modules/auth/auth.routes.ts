@@ -42,6 +42,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         } catch { /* non-fatal — don't fail registration over referral tracking */ }
       }
 
+      // Send in-app notification to admins about new business registration
+      const { notifyAdminEvent } = await import('../notification/in-app-notification.helpers.js');
+      void notifyAdminEvent('business_registered', {
+        businessName,
+        businessId: result.id,
+        registrationTimestamp: new Date(),
+      }).catch(err => console.error('[Auth] Failed to send notification:', err));
+
       return reply.status(201).send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Registration failed.';

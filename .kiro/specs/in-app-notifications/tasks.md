@@ -131,14 +131,14 @@ This implementation plan creates a complete in-app notification system for both 
     - Test error handling when recipient doesn't exist
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 9.1, 9.2, 10.1, 10.2, 10.3, 11.1, 11.2, 11.3_
 
-- [ ] 6. Integrate notification helpers into existing modules
+- [x] 6. Integrate notification helpers into existing modules
   - [x] 6.1 Integrate with subscription module
     - Import `notifySubscriptionUpdate()` in subscription service
     - Add notification calls for plan changes, renewals, cancellations
     - Add notification calls for payment success and failure
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [ ] 6.2 Integrate with payment module
+  - [x] 6.2 Integrate with payment module
     - Import `notifyPaymentEvent()` in payment service
     - Add notification calls for order completions and refunds
     - Add notification calls for withdrawal approvals and rejections
@@ -150,13 +150,13 @@ This implementation plan creates a complete in-app notification system for both 
     - Add notification calls for commission credited events
     - _Requirements: 9.1, 9.2, 9.3_
 
-  - [ ] 6.4 Integrate with support ticket module
+  - [x] 6.4 Integrate with support ticket module
     - Import `notifySupportTicket()` in support service
     - Add notification calls for ticket creation and status changes
     - Add notification calls for admin replies
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
-  - [ ] 6.5 Integrate with admin module
+  - [x] 6.5 Integrate with admin module
     - Import `notifyAdminEvent()` in admin service
     - Add notification calls for business registration and suspension
     - Add notification calls for withdrawal requests and payment failures

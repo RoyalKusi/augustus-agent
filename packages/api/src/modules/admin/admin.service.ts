@@ -1059,6 +1059,19 @@ export async function sendTicketMessage(
   const { sendAdminTicketReply } = await import('../../modules/notification/notification.service.js');
   void sendAdminTicketReply(ticket.business_email, ticket.ticket_reference, ticket.subject, body.trim()).catch(() => {});
 
+  // Send in-app notification to business
+  const ticketInfo = await pool.query<{ business_id: string }>(
+    `SELECT business_id FROM support_tickets WHERE id = $1`,
+    [ticketId]
+  );
+  if (ticketInfo.rows.length > 0) {
+    const { notifySupportTicket } = await import('../notification/in-app-notification.helpers.js');
+    void notifySupportTicket('business', ticketInfo.rows[0].business_id, 'admin_replied', {
+      ticketReference: ticket.ticket_reference,
+      preview: body.trim().substring(0, 100),
+    }).catch(err => console.error('[Admin] Failed to send notification:', err));
+  }
+
   return {
     id: row.id,
     ticketId: row.ticket_id,
