@@ -145,6 +145,15 @@ export async function activateSubscription(
     }
 
     await client.query('COMMIT');
+    
+    // Send in-app notification for subscription activation
+    const { notifySubscriptionUpdate } = await import('../notification/in-app-notification.helpers.js');
+    void notifySubscriptionUpdate(businessId, 'renewed', {
+      planName: tier,
+      amount: plan.priceUsd,
+      renewalDate,
+    }).catch(err => console.error('[Subscription] Failed to send notification:', err));
+    
     return rowToSubscription(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -195,6 +204,14 @@ export async function upgradePlan(
     [newTier, newPlan.priceUsd, paynowReference, current.id],
   );
 
+  // Send in-app notification for upgrade
+  const { notifySubscriptionUpdate } = await import('../notification/in-app-notification.helpers.js');
+  void notifySubscriptionUpdate(businessId, 'upgraded', {
+    oldPlanName: current.plan,
+    planName: newTier,
+    amount: proratedChargeUsd,
+  }).catch(err => console.error('[Subscription] Failed to send notification:', err));
+
   return { subscription: rowToSubscription(result.rows[0]), proratedChargeUsd };
 }
 
@@ -227,6 +244,12 @@ export async function downgradePlan(
      WHERE id = $2`,
     [newTier, current.id],
   );
+
+  // Send in-app notification for downgrade
+  const { notifySubscriptionUpdate } = await import('../notification/in-app-notification.helpers.js');
+  void notifySubscriptionUpdate(businessId, 'downgraded', {
+    planName: newTier,
+  }).catch(err => console.error('[Subscription] Failed to send notification:', err));
 
   return { scheduledTier: newTier, effectiveDate };
 }

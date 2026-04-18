@@ -18,6 +18,7 @@ import { paymentRoutes } from './modules/payment/payment.routes.js';
 import { interventionRoutes } from './modules/intervention/intervention.routes.js';
 import { legalRoutes } from './routes/legal.js';
 import { promoRoutes } from './modules/promo/promo.routes.js';
+import { inAppNotificationRoutes } from './modules/notification/in-app-notification.routes.js';
 import {
   startConversationEngineConsumer,
   stopConversationEngineConsumer,
@@ -88,6 +89,7 @@ const start = async () => {
     await app.register(interventionRoutes);
     await app.register(legalRoutes);
     await app.register(promoRoutes);
+    await app.register(inAppNotificationRoutes);
 
     // Static file serving (production only)
     const isProd = process.env.NODE_ENV === 'production';

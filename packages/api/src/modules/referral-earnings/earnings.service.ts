@@ -48,6 +48,12 @@ export class EarningsService {
 
     const calculatedAt = new Date();
 
+    // Get referrer info for notification
+    const referralInfo = await pool.query<{ referrer_id: string; referred_name: string }>(
+      `SELECT referrer_id, referred_name FROM referrals WHERE id = $1`,
+      [referralId]
+    );
+
     await pool.query(
       `UPDATE referrals 
        SET earnings_usd = $1,
@@ -56,6 +62,16 @@ export class EarningsService {
        WHERE id = $4`,
       [earnings, settings.commissionPercentage, calculatedAt, referralId]
     );
+
+    // Send in-app notification for commission earned
+    if (referralInfo.rows.length > 0) {
+      const { referrer_id, referred_name } = referralInfo.rows[0];
+      const { notifyReferralEarning } = await import('../notification/in-app-notification.helpers.js');
+      void notifyReferralEarning(referrer_id, 'commission_earned', {
+        amount: earnings,
+        referredBusinessName: referred_name,
+      }).catch(err => console.error('[Earnings] Failed to send notification:', err));
+    }
 
     return {
       referralId,
