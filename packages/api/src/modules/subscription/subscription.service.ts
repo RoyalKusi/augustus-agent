@@ -114,6 +114,12 @@ export async function activateSubscription(
       [businessId, cycleStart.toISOString().split('T')[0]],
     );
 
+    // Mark referral as subscribed if this business was referred
+    await client.query(
+      `UPDATE referrals SET status = 'subscribed' WHERE referred_id = $1 AND status = 'registered'`,
+      [businessId],
+    );
+
     await client.query('COMMIT');
     return rowToSubscription(result.rows[0]);
   } catch (err) {

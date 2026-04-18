@@ -217,6 +217,38 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // GET /dashboard/referrals — get referral info and list for the logged-in business
+  app.get('/dashboard/referrals', { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const meta = await pool.query<{ referral_code: string | null; referral_enabled: boolean; name: string }>(
+        `SELECT referral_code, referral_enabled, name FROM businesses WHERE id = $1`,
+        [request.businessId],
+      );
+      const biz = meta.rows[0];
+      if (!biz) return reply.status(404).send({ error: 'Business not found.' });
+
+      const referrals = await pool.query(
+        `SELECT id, referred_email, referred_name, status, created_at
+         FROM referrals WHERE referrer_id = $1 ORDER BY created_at DESC`,
+        [request.businessId],
+      );
+
+      return reply.send({
+        referralEnabled: biz.referral_enabled,
+        referralCode: biz.referral_code ?? null,
+        referrals: referrals.rows.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          referredEmail: r.referred_email,
+          referredName: r.referred_name,
+          status: r.status,
+          createdAt: r.created_at,
+        })),
+      });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
   // GET /dashboard/notification-number — get the business owner's notification WhatsApp number
   app.get('/dashboard/notification-number', { preHandler: authenticate }, async (request, reply) => {
     try {

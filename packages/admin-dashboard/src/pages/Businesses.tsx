@@ -9,6 +9,8 @@ interface Business {
   status: string;
   plan?: string | null;
   createdAt?: string;
+  referralEnabled?: boolean;
+  referralCode?: string | null;
 }
 
 interface BusinessesResponse {
@@ -23,6 +25,12 @@ interface BlastResult {
   failed: number;
   total: number;
   failures: string[];
+}
+
+interface ReferralInfo {
+  referralEnabled: boolean;
+  referralCode: string | null;
+  referrals: Array<{ id: string; referredEmail: string; referredName: string; status: string; createdAt: string }>;
 }
 
 export default function Businesses() {
@@ -41,6 +49,50 @@ export default function Businesses() {
   // Selection state
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+
+  // Referral state — per-business referral info loaded on demand
+  const [referralInfo, setReferralInfo] = useState<Record<string, ReferralInfo>>({});
+  const [referralLoading, setReferralLoading] = useState<Record<string, boolean>>({});
+  const [expandedReferral, setExpandedReferral] = useState<string | null>(null);
+
+  const loadReferralInfo = async (id: string) => {
+    if (referralInfo[id]) return; // already loaded
+    setReferralLoading(r => ({ ...r, [id]: true }));
+    try {
+      const data = await apiFetch<ReferralInfo>(`/admin/businesses/${id}/referrals`);
+      setReferralInfo(r => ({ ...r, [id]: data }));
+    } catch { /* ignore */ } finally {
+      setReferralLoading(r => ({ ...r, [id]: false }));
+    }
+  };
+
+  const toggleReferral = async (id: string, currentlyEnabled: boolean) => {
+    const endpoint = currentlyEnabled
+      ? `/admin/businesses/${id}/referral/disable`
+      : `/admin/businesses/${id}/referral/enable`;
+    try {
+      const result = await apiFetch<{ referralEnabled: boolean; referralCode?: string }>(endpoint, { method: 'POST' });
+      setReferralInfo(r => ({
+        ...r,
+        [id]: {
+          ...(r[id] ?? { referrals: [] }),
+          referralEnabled: result.referralEnabled,
+          referralCode: result.referralCode ?? r[id]?.referralCode ?? null,
+        },
+      }));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update referral.');
+    }
+  };
+
+  const toggleReferralPanel = async (id: string) => {
+    if (expandedReferral === id) {
+      setExpandedReferral(null);
+    } else {
+      setExpandedReferral(id);
+      await loadReferralInfo(id);
+    }
+  };
 
   // Email blast modal state
   const [showBlast, setShowBlast] = useState(false);
@@ -250,12 +302,12 @@ export default function Businesses() {
               <th style={th}>Plan</th>
               <th style={th}>Status</th>
               <th style={th}>Registered</th>
-              <th style={th}>Actions</th>
-            </tr>
+              <th style={th}>Actions</th>            </tr>
           </thead>
           <tbody>
             {businesses.map((b) => (
-              <tr key={b.id} style={{ borderBottom: '1px solid #e2e8f0', background: selected.has(b.id) ? '#ebf8ff' : undefined }}>
+              <>
+              <tr key={b.id} style={{ borderBottom: expandedReferral === b.id ? 'none' : '1px solid #e2e8f0', background: selected.has(b.id) ? '#ebf8ff' : undefined }}>
                 <td style={{ ...td, width: 36 }}>
                   <input
                     type="checkbox"
@@ -280,11 +332,100 @@ export default function Businesses() {
                       onClick={() => navigate(`/admin/businesses/${b.id}/dashboard`)}
                       style={btnSecondary}
                     >
-                      View Dashboard
+                      View
+                    </button>
+                    <button
+                      onClick={() => toggleReferralPanel(b.id)}
+                      style={{
+                        padding: '4px 10px', fontSize: 12, border: 'none', borderRadius: 4, cursor: 'pointer',
+                        background: expandedReferral === b.id ? '#e9d8fd' : '#f3e8ff',
+                        color: '#6b46c1', fontWeight: 600,
+                      }}
+                    >
+                      Referral {expandedReferral === b.id ? '▲' : '▼'}
                     </button>
                   </div>
                 </td>
               </tr>
+              {expandedReferral === b.id && (
+                <tr key={`${b.id}-referral`} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <td colSpan={7} style={{ padding: '0 12px 12px 48px', background: '#faf5ff' }}>
+                    {referralLoading[b.id] ? (
+                      <p style={{ fontSize: 13, color: '#718096' }}>Loading…</p>
+                    ) : referralInfo[b.id] ? (() => {
+                      const info = referralInfo[b.id];
+                      const referralLink = info.referralCode
+                        ? `https://augustus.silverconne.com/register?ref=${info.referralCode}`
+                        : null;
+                      return (
+                        <div style={{ paddingTop: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 13, color: '#4a5568', fontWeight: 600 }}>Referral Program:</span>
+                              <span style={{
+                                padding: '2px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                                background: info.referralEnabled ? '#c6f6d5' : '#fed7d7',
+                                color: info.referralEnabled ? '#276749' : '#c53030',
+                              }}>
+                                {info.referralEnabled ? 'Enabled' : 'Disabled'}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => toggleReferral(b.id, info.referralEnabled)}
+                              style={{
+                                padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: 'none',
+                                background: info.referralEnabled ? '#fff5f5' : '#f0fff4',
+                                color: info.referralEnabled ? '#c53030' : '#276749',
+                                border: `1px solid ${info.referralEnabled ? '#feb2b2' : '#9ae6b4'}` as string,
+                              }}
+                            >
+                              {info.referralEnabled ? 'Disable Referral' : 'Enable Referral'}
+                            </button>
+                          </div>
+                          {info.referralEnabled && referralLink && (
+                            <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'monospace', color: '#4a5568', wordBreak: 'break-all' }}>
+                              {referralLink}
+                            </div>
+                          )}
+                          {info.referrals.length > 0 ? (
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ background: '#f3e8ff' }}>
+                                  <th style={{ ...th, fontSize: 11 }}>Business</th>
+                                  <th style={{ ...th, fontSize: 11 }}>Email</th>
+                                  <th style={{ ...th, fontSize: 11 }}>Status</th>
+                                  <th style={{ ...th, fontSize: 11 }}>Date</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {info.referrals.map(r => (
+                                  <tr key={r.id} style={{ borderTop: '1px solid #e9d8fd' }}>
+                                    <td style={td}>{r.referredName}</td>
+                                    <td style={td}>{r.referredEmail}</td>
+                                    <td style={td}>
+                                      <span style={{
+                                        padding: '1px 7px', borderRadius: 8, fontSize: 10, fontWeight: 700,
+                                        background: r.status === 'subscribed' ? '#c6f6d5' : '#ebf8ff',
+                                        color: r.status === 'subscribed' ? '#276749' : '#2b6cb0',
+                                      }}>
+                                        {r.status}
+                                      </span>
+                                    </td>
+                                    <td style={td}>{new Date(r.createdAt).toLocaleDateString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p style={{ fontSize: 12, color: '#a0aec0', margin: 0 }}>No referrals yet.</p>
+                          )}
+                        </div>
+                      );
+                    })() : null}
+                  </td>
+                </tr>
+              )}
+              </>
             ))}
             {businesses.length === 0 && (
               <tr>

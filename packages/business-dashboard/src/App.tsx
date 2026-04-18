@@ -18,6 +18,8 @@ import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import Docs from './pages/Docs';
 
+import Referrals from './pages/Referrals';
+
 export default function App() {
   const token = localStorage.getItem('augustus_token');
 
@@ -44,6 +46,7 @@ export default function App() {
             <Route path="support" element={<Support />} />
             <Route path="payments" element={<PaymentSettings />} />
             <Route path="payment-settings" element={<PaymentSettings />} />
+            <Route path="referrals" element={<Referrals />} />
             <Route path="docs" element={<Docs />} />
           </Route>
         </Routes>

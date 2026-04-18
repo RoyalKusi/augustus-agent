@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../api';
 
 export default function Register() {
+  const [searchParams] = useSearchParams();
+  const refCode = searchParams.get('ref') ?? '';
+
   const [form, setForm] = useState({
     businessName: '',
     ownerName: '',
@@ -21,10 +24,9 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
-      await apiFetch('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify(form),
-      });
+      const body: Record<string, string> = { ...form };
+      if (refCode) body.referralCode = refCode;
+      await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify(body) });
       setSuccess(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -46,6 +48,11 @@ export default function Register() {
   return (
     <div style={containerStyle}>
       <h2>Create your account</h2>
+      {refCode && (
+        <div style={{ marginBottom: 14, padding: '8px 12px', background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 6, fontSize: 13, color: '#276749' }}>
+          🎉 You were referred! Referral code: <strong>{refCode}</strong>
+        </div>
+      )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={submit} style={formStyle}>
         <label>Business Name</label>
@@ -60,27 +67,12 @@ export default function Register() {
           {loading ? 'Registering…' : 'Register'}
         </button>
       </form>
-      <p>
-        Already have an account? <Link to="/login">Login</Link>
-      </p>
+      <p>Already have an account? <Link to="/login">Login</Link></p>
     </div>
   );
 }
 
-const containerStyle: React.CSSProperties = {
-  maxWidth: 400,
-  margin: '60px auto',
-  padding: 24,
-  fontFamily: 'sans-serif',
-};
+const containerStyle: React.CSSProperties = { maxWidth: 400, margin: '60px auto', padding: 24, fontFamily: 'sans-serif' };
 const formStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8 };
 const inputStyle: React.CSSProperties = { padding: '8px', fontSize: 14, borderRadius: 4, border: '1px solid #ccc' };
-const btnStyle: React.CSSProperties = {
-  padding: '10px',
-  background: '#3182ce',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontSize: 14,
-};
+const btnStyle: React.CSSProperties = { padding: '10px', background: '#3182ce', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14 };

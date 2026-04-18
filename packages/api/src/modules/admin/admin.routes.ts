@@ -345,6 +345,85 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // ─── Referral System ─────────────────────────────────────────────────────
+
+  // POST /admin/businesses/:id/referral/enable — enable referral for a business (generates code if needed)
+  app.post('/admin/businesses/:id/referral/enable', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      // Generate a short unique code if not already set
+      const existing = await pool.query<{ referral_code: string | null }>(
+        `SELECT referral_code FROM businesses WHERE id = $1`,
+        [id],
+      );
+      if (!existing.rows[0]) return reply.status(404).send({ error: 'Business not found.' });
+
+      let code = existing.rows[0].referral_code;
+      if (!code) {
+        // Generate: first 6 chars of business id (base36-ish) + 4 random chars
+        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+        code = `${id.replace(/-/g, '').slice(0, 6).toUpperCase()}${rand}`;
+      }
+
+      await pool.query(
+        `UPDATE businesses SET referral_enabled = TRUE, referral_code = $1, updated_at = NOW() WHERE id = $2`,
+        [code, id],
+      );
+      await logAuditEvent(request.operatorId, 'enable_referral', 'business', id, { code });
+      return reply.send({ referralCode: code, referralEnabled: true });
+    } catch (err: unknown) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /admin/businesses/:id/referral/disable
+  app.post('/admin/businesses/:id/referral/disable', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      await pool.query(
+        `UPDATE businesses SET referral_enabled = FALSE, updated_at = NOW() WHERE id = $1`,
+        [id],
+      );
+      await logAuditEvent(request.operatorId, 'disable_referral', 'business', id);
+      return reply.send({ referralEnabled: false });
+    } catch (err: unknown) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // GET /admin/businesses/:id/referrals — admin view of a business's referrals
+  app.get('/admin/businesses/:id/referrals', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const result = await pool.query(
+        `SELECT r.id, r.referred_email, r.referred_name, r.status, r.created_at,
+                b.referral_code, b.referral_enabled
+         FROM referrals r
+         JOIN businesses b ON b.id = r.referrer_id
+         WHERE r.referrer_id = $1
+         ORDER BY r.created_at DESC`,
+        [id],
+      );
+      const meta = await pool.query<{ referral_code: string | null; referral_enabled: boolean }>(
+        `SELECT referral_code, referral_enabled FROM businesses WHERE id = $1`,
+        [id],
+      );
+      return reply.send({
+        referralCode: meta.rows[0]?.referral_code ?? null,
+        referralEnabled: meta.rows[0]?.referral_enabled ?? false,
+        referrals: result.rows.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          referredEmail: r.referred_email,
+          referredName: r.referred_name,
+          status: r.status,
+          createdAt: r.created_at,
+        })),
+      });
+    } catch (err: unknown) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
   // ─── Mass Email ──────────────────────────────────────────────────────────
 
   // POST /admin/businesses/email-blast — send email to all or selected businesses

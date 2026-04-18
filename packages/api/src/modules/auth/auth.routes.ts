@@ -8,19 +8,40 @@ import {
 } from './auth.service.js';
 import { deleteSession } from '../../redis/session.js';
 import { config } from '../../config.js';
+import { pool } from '../../db/client.js';
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   // POST /auth/register
   app.post('/auth/register', async (request, reply) => {
-    const { businessName, ownerName, email, password } = request.body as {
+    const { businessName, ownerName, email, password, referralCode } = request.body as {
       businessName: string;
       ownerName: string;
       email: string;
       password: string;
+      referralCode?: string;
     };
 
     try {
       const result = await registerBusiness({ businessName, ownerName, email, password });
+
+      // Record referral if a valid code was provided
+      if (referralCode) {
+        try {
+          const referrer = await pool.query<{ id: string }>(
+            `SELECT id FROM businesses WHERE referral_code = $1 AND referral_enabled = TRUE`,
+            [referralCode.toUpperCase().trim()],
+          );
+          if (referrer.rows[0]) {
+            await pool.query(
+              `INSERT INTO referrals (referrer_id, referred_id, referred_email, referred_name)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (referred_id) DO NOTHING`,
+              [referrer.rows[0].id, result.id, email.toLowerCase().trim(), businessName],
+            );
+          }
+        } catch { /* non-fatal — don't fail registration over referral tracking */ }
+      }
+
       return reply.status(201).send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Registration failed.';
