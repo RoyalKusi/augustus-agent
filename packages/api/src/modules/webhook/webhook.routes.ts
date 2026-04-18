@@ -338,6 +338,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
           }
 
           let messageText: string | null = null;
+          let intentOverride: import('../conversation/intent-detector.js').IntentResult | undefined;
           if (message.type === 'text') {
             messageText = message.text?.body ?? null;
           } else if (message.type === 'interactive') {
@@ -345,7 +346,17 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             if (interactive?.type === 'button_reply') {
               const buttonId = interactive.button_reply?.id ?? '';
               if (buttonId.startsWith('order_')) {
-                messageText = `I want to order product ${buttonId.replace('order_', '')}`;
+                const productId = buttonId.replace('order_', '');
+                // Resolve product name so the message is natural and the intent is clear
+                const prodRow = await pool.query<{ name: string }>(
+                  `SELECT name FROM products WHERE id = $1 LIMIT 1`,
+                  [productId],
+                );
+                const productName = prodRow.rows[0]?.name ?? 'that product';
+                messageText = `I'd like to order ${productName}`;
+                // Use order_button intent — forces a confirmation step before payment
+                const { orderButtonIntent } = await import('../conversation/intent-detector.js');
+                intentOverride = orderButtonIntent(productName);
               } else {
                 messageText = interactive.button_reply?.title ?? buttonId ?? null;
               }
@@ -375,6 +386,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             messageId: message.id ?? '',
             timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
             customerName,
+            intentOverride,
           });
           app.log.info({ businessId, messageId }, '[Webhook] Message processed successfully');
         } catch (err) {
@@ -434,7 +446,23 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             if (interactive?.type === 'button_reply') {
               const buttonId = interactive.button_reply?.id ?? '';
               if (buttonId.startsWith('order_')) {
-                messageText = `I want to order product ${buttonId.replace('order_', '')}`;
+                const productId = buttonId.replace('order_', '');
+                const prodRow = await pool.query<{ name: string }>(
+                  `SELECT name FROM products WHERE id = $1 LIMIT 1`,
+                  [productId],
+                );
+                const productName = prodRow.rows[0]?.name ?? 'that product';
+                messageText = `I'd like to order ${productName}`;
+                const { orderButtonIntent } = await import('../conversation/intent-detector.js');
+                await processInboundMessage({
+                  businessId,
+                  customerWaNumber: message.from ?? '',
+                  messageText,
+                  messageId: message.id ?? '',
+                  timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
+                  intentOverride: orderButtonIntent(productName),
+                });
+                return;
               } else {
                 messageText = interactive.button_reply?.title ?? buttonId ?? null;
               }

@@ -12,7 +12,8 @@ export type Intent =
   | 'complaint'
   | 'ready_to_buy'
   | 'negotiation'
-  | 'off_topic';
+  | 'off_topic'
+  | 'order_button';
 
 export interface IntentResult {
   intent: Intent;
@@ -194,11 +195,13 @@ const INTENT_INSTRUCTIONS: Record<string, string> = {
   complaint:
     'Customer is unhappy. Acknowledge sincerely in one sentence, apologise, offer a solution. Do not push products.',
   ready_to_buy:
-    'Customer is ready to buy. Use PAYMENT_TRIGGER immediately with the product and quantity. Assume quantity 1 if not specified.',
+    'Customer is ready to buy. Use PAYMENT_TRIGGER immediately with the product and quantity. Assume quantity 1 if not specified. Only use PAYMENT_TRIGGER if you know which specific product the customer wants — if unclear, ask which product first.',
   negotiation:
     'Acknowledge their concern briefly, offer best available price or free delivery, then ask if they would like to proceed.',
   off_topic:
     'Politely redirect in one sentence, then ask what they are looking for.',
+  order_button:
+    'Customer tapped the "Order Now" button for a specific product. Confirm the product and quantity with them before processing payment. Ask: "Great choice! Just to confirm — you\'d like [product name], is that right?"',
 };
 
 // ── Acknowledgment patterns — these should NOT trigger ready_to_buy ──────────
@@ -283,7 +286,7 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     off_topic: score(text, OFF_TOPIC_PATTERNS),
   };
 
-  let topIntent: Intent = 'product_inquiry';
+  let topIntent: Intent = 'off_topic';
   let topScore = 0;
 
   for (const [intent, s] of Object.entries(scores)) {
@@ -293,8 +296,10 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     }
   }
 
+  // Only default to product_inquiry if there's at least one pattern match
+  // — unrecognised messages should not trigger a catalogue dump
   if (topScore === 0) {
-    topIntent = 'product_inquiry';
+    topIntent = 'off_topic';
   }
 
   const confidence: IntentResult['confidence'] =
@@ -304,6 +309,19 @@ export function detectIntent(message: string, timeSinceLastMessageMs = 0): Inten
     intent: topIntent,
     confidence,
     instruction: INTENT_INSTRUCTIONS[topIntent],
+  };
+}
+
+/**
+ * Returns an IntentResult for an "Order Now" button tap.
+ * Used by the webhook layer when a customer taps a quick-reply order button.
+ * Forces a confirmation step rather than immediately firing a payment link.
+ */
+export function orderButtonIntent(productName: string): IntentResult {
+  return {
+    intent: 'order_button',
+    confidence: 'high',
+    instruction: INTENT_INSTRUCTIONS.order_button.replace('[product name]', productName),
   };
 }
 

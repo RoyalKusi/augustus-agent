@@ -131,13 +131,16 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
     'You are a friendly sales assistant on WhatsApp. Be natural and human.\n\n' +
     'RULES:\n' +
     '- Never send a payment link on a greeting or casual message\n' +
-    '- Only use PAYMENT_TRIGGER when the customer has clearly chosen a product and confirmed they want to buy\n' +
-    '- Only use CAROUSEL_TRIGGER when the customer asks to see products or shows buying intent\n' +
+    '- Only use PAYMENT_TRIGGER when the customer has clearly chosen a specific product and confirmed they want to buy it\n' +
+    '- Only use CAROUSEL_TRIGGER when the customer explicitly asks to see products — do NOT show products on every message\n' +
+    '- Never use CAROUSEL_TRIGGER if products were already shown in this conversation unless the customer asks again\n' +
     '- Keep replies to 1-2 sentences — natural chat, not a sales pitch\n' +
     '- Use the conversation history — never repeat yourself\n' +
     '- Match the customer\'s energy: casual if they\'re casual, direct if they\'re direct\n' +
     '- If a payment link or invoice was already sent in this conversation, do NOT send it again unless the customer explicitly asks\n' +
-    '- If the customer says "ok", "thanks", "got it" or similar — just respond naturally, do not resend anything'
+    '- If the customer says "ok", "thanks", "got it", "yes", "sure" or similar — just respond naturally, do not resend anything\n' +
+    '- If you are unsure which product the customer wants, ask before using PAYMENT_TRIGGER\n' +
+    '- Never output raw trigger syntax (CAROUSEL_TRIGGER or PAYMENT_TRIGGER) in the conversational text — only on its own line'
   );
 
   if (customerName) {
@@ -223,11 +226,12 @@ export function parseClaudeResponse(responseText) {
     const text = responseText.replace(/CAROUSEL_TRIGGER:\[[^\]]*\]/, '').trim();
     return { type: 'carousel', text, products: productIds };
   }
-  const paymentMatch = responseText.match(/PAYMENT_TRIGGER:(\{[\s\S]*\})/);
+  // Non-greedy match to avoid consuming trailing text after the JSON object
+  const paymentMatch = responseText.match(/PAYMENT_TRIGGER:(\{[^}]*\})/);
   if (paymentMatch) {
     let orderDetails = {};
     try { orderDetails = JSON.parse(paymentMatch[1]); } catch { return { type: 'text', text: responseText }; }
-    const text = responseText.replace(/PAYMENT_TRIGGER:\{[\s\S]*\}/, '').trim();
+    const text = responseText.replace(/PAYMENT_TRIGGER:\{[^}]*\}/, '').trim();
     return { type: 'payment', text, orderDetails };
   }
   return { type: 'text', text: responseText };
@@ -344,7 +348,7 @@ async function getBusinessEmail(businessId) {
 }
 
 export async function processInboundMessage(msg) {
-  const { businessId, customerWaNumber, messageText, messageId, timestamp, customerName } = msg;
+  const { businessId, customerWaNumber, messageText, messageId, timestamp, customerName, intentOverride } = msg;
   const conversation = await getOrCreateConversation(businessId, customerWaNumber);
   const conversationId = conversation.id;
 
@@ -421,8 +425,8 @@ export async function processInboundMessage(msg) {
     : timestamp;
   const timeSinceLastMessageMs = timestamp - lastMessageTime;
 
-  // Detect intent with time gap awareness
-  const intentResult = detectIntent(messageText, timeSinceLastMessageMs);
+  // Detect intent with time gap awareness — use override if provided (e.g. order button tap)
+  const intentResult = intentOverride ?? detectIntent(messageText, timeSinceLastMessageMs);
   const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction, timeSinceLastMessageMs, customerName ?? '');
 
   // Auto-label lead warmth based on intent — only upgrade, never downgrade
@@ -616,28 +620,8 @@ export async function processInboundMessage(msg) {
             await sendMessage(businessId, {
               type: 'text',
               to: customerWaNumber,
-              body: `I couldn't find those items in our current stock. Let me show you what's available:`,
+              body: `Sorry, I couldn't find that item in our current stock. Could you let me know which product you'd like to order?`,
             });
-            // Re-show products
-            const allProducts = await pool.query(
-              'SELECT id, name, price, currency, image_urls, description FROM products WHERE business_id = $1 AND is_active = TRUE AND stock_quantity > 0 LIMIT 5',
-              [businessId]
-            );
-            for (const p of allProducts.rows) {
-              const imageUrl = p.image_urls?.[0];
-              const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
-              if (imageUrl) {
-                await sendMessage(businessId, { type: 'image', to: customerWaNumber, url: imageUrl, caption: productCaption });
-              } else {
-                await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: productCaption });
-              }
-              await sendMessage(businessId, {
-                type: 'quick_reply',
-                to: customerWaNumber,
-                body: `Order ${p.name}?`,
-                buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
-              });
-            }
           }
         } else if (settings?.external_payment_details) {
           // External payment flow — create an order record then send invoice
@@ -697,7 +681,7 @@ export async function processInboundMessage(msg) {
             await sendMessage(businessId, {
               type: 'text',
               to: customerWaNumber,
-              body: `I couldn't find those items in our current stock. Let me show you what's available:`,
+              body: `Sorry, I couldn't find that item in our current stock. Could you let me know which product you'd like to order?`,
             });
           }
         } else {
