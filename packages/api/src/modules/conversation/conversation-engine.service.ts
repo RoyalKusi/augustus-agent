@@ -411,6 +411,41 @@ export async function processInboundMessage(msg) {
   const intentResult = detectIntent(messageText, timeSinceLastMessageMs);
   const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction, timeSinceLastMessageMs);
 
+  // Auto-label lead warmth based on intent — only upgrade, never downgrade
+  // Priority: hot > warm > browsing > cold (unlabelled treated as lowest)
+  void (async () => {
+    try {
+      const LABEL_PRIORITY: Record<string, number> = { hot: 4, warm: 3, browsing: 2, cold: 1 };
+      const intentToLabel: Record<string, string | null> = {
+        ready_to_buy: 'hot',
+        negotiation: 'warm',
+        product_inquiry: 'warm',
+        price_question: 'warm',
+        availability_check: 'warm',
+        greeting: 'browsing',
+        off_topic: 'browsing',
+        complaint: 'cold',
+      };
+      const newLabel = intentToLabel[intentResult.intent] ?? null;
+      if (newLabel) {
+        const current = await pool.query<{ lead_label: string | null }>(
+          `SELECT lead_label FROM conversations WHERE id = $1`,
+          [conversationId],
+        );
+        const currentLabel = current.rows[0]?.lead_label ?? null;
+        const currentPriority = currentLabel ? (LABEL_PRIORITY[currentLabel] ?? 0) : 0;
+        const newPriority = LABEL_PRIORITY[newLabel] ?? 0;
+        // Only update if new label is higher priority (never downgrade)
+        if (newPriority > currentPriority) {
+          await pool.query(
+            `UPDATE conversations SET lead_label = $1, updated_at = NOW() WHERE id = $2`,
+            [newLabel, conversationId],
+          );
+        }
+      }
+    } catch { /* non-fatal */ }
+  })();
+
   // Use higher token limit for payment/order intents so PAYMENT_TRIGGER JSON doesn't get cut off
   const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 600 : 300;
 
