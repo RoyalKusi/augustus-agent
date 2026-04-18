@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -159,7 +160,10 @@ export default function Training() {
     <div style={{ maxWidth: 820 }}>
       <h2 style={{ marginBottom: 4 }}>AI Training Data</h2>
       <p style={{ color: '#718096', fontSize: 14, marginTop: 0, marginBottom: 20 }}>
-        Teach your AI agent about your business. Changes take effect within minutes.
+        Teach your AI agent about your business. Changes take effect within minutes.{' '}
+        <Link to="/dashboard/training/guide" style={{ color: '#3182ce', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          📖 View templates & examples →
+        </Link>
       </p>
 
       {/* Tab bar */}

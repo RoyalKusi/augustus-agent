@@ -8,6 +8,7 @@ import Subscription from './pages/Subscription';
 import WhatsAppSetup from './pages/WhatsAppSetup';
 import Catalogue from './pages/Catalogue';
 import Training from './pages/Training';
+import TrainingGuide from './pages/TrainingGuide';
 import Conversations from './pages/Conversations';
 import Orders from './pages/Orders';
 import Revenue from './pages/Revenue';
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="whatsapp" element={<WhatsAppSetup />} />
             <Route path="catalogue" element={<Catalogue />} />
             <Route path="training" element={<Training />} />
+            <Route path="training/guide" element={<TrainingGuide />} />
             <Route path="conversations" element={<Conversations />} />
             <Route path="orders" element={<Orders />} />
             <Route path="revenue" element={<Revenue />} />
