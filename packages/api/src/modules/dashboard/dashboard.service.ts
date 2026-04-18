@@ -119,6 +119,7 @@ export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
 
 // ─── Task 12.4: Active Conversations ─────────────────────────────────────────
 
+
 export interface ConversationSummary {
   id: string;
   customerWaNumber: string;
@@ -126,6 +127,7 @@ export interface ConversationSummary {
   messageCount: number;
   manualInterventionActive: boolean;
   sessionStart: string;
+  leadLabel: string | null;
 }
 
 export async function getActiveConversations(
@@ -138,23 +140,28 @@ export async function getActiveConversations(
     message_count: number;
     manual_intervention_active: boolean;
     session_start: Date | null;
+    lead_label: string | null;
   }>(
     `SELECT id, COALESCE(customer_wa_number, customer_phone) AS customer_wa_number,
             status, message_count, manual_intervention_active,
-            COALESCE(session_start, session_started_at) AS session_start
+            COALESCE(session_start, session_started_at) AS session_start,
+            lead_label
      FROM conversations
      WHERE business_id = $1 AND status = 'active'
-     ORDER BY COALESCE(session_start, session_started_at) DESC`,
+     ORDER BY
+       CASE lead_label WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 WHEN 'browsing' THEN 3 WHEN 'cold' THEN 4 ELSE 5 END,
+       COALESCE(session_start, session_started_at) DESC`,
     [businessId],
   );
 
   const conversations: ConversationSummary[] = result.rows.map((row) => ({
     id: row.id,
-    customerWaNumber: row.customer_wa_number ?? '0000',  // full number for business owner
+    customerWaNumber: row.customer_wa_number ?? '0000',
     status: row.status,
     messageCount: row.message_count,
     manualInterventionActive: row.manual_intervention_active,
     sessionStart: row.session_start ? row.session_start.toISOString() : new Date().toISOString(),
+    leadLabel: row.lead_label ?? null,
   }));
 
   return { conversations };

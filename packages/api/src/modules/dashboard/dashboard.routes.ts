@@ -234,7 +234,6 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   // PUT /dashboard/notification-number — save the business owner's notification WhatsApp number
   app.put('/dashboard/notification-number', { preHandler: authenticate }, async (request, reply) => {
     const { notificationWaNumber } = request.body as { notificationWaNumber?: string };
-    // Sanitise: strip non-digits except leading +
     const cleaned = notificationWaNumber
       ? notificationWaNumber.replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/\+/g, '')
       : null;
@@ -247,6 +246,60 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save notification number.';
       return reply.status(500).send({ error: message });
+    }
+  });
+
+  // PATCH /dashboard/conversations/:id/label — set lead warmth label
+  app.patch('/dashboard/conversations/:id/label', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { label } = request.body as { label: string | null };
+    const valid = ['hot', 'warm', 'cold', 'browsing', null];
+    if (!valid.includes(label as string | null)) {
+      return reply.status(400).send({ error: 'label must be hot, warm, cold, browsing, or null.' });
+    }
+    try {
+      await pool.query(
+        `UPDATE conversations SET lead_label = $1, updated_at = NOW() WHERE id = $2 AND business_id = $3`,
+        [label ?? null, id, request.businessId],
+      );
+      return reply.send({ id, leadLabel: label ?? null });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /dashboard/broadcast — send a message to multiple WhatsApp numbers
+  app.post('/dashboard/broadcast', { preHandler: authenticate }, async (request, reply) => {
+    const { message, recipients } = request.body as {
+      message: string;
+      recipients: string[]; // array of WhatsApp numbers
+    };
+    if (!message?.trim()) return reply.status(400).send({ error: 'message is required.' });
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return reply.status(400).send({ error: 'recipients must be a non-empty array.' });
+    }
+    if (message.length > 1000) {
+      return reply.status(400).send({ error: 'Message must be 1000 characters or less.' });
+    }
+    if (recipients.length > 100) {
+      return reply.status(400).send({ error: 'Maximum 100 recipients per broadcast.' });
+    }
+    try {
+      const { sendMessage } = await import('../../modules/whatsapp/message-dispatcher.js');
+      const results: Array<{ number: string; status: 'sent' | 'failed'; error?: string }> = [];
+      for (const number of recipients) {
+        try {
+          await sendMessage(request.businessId, { type: 'text', to: number, body: message });
+          results.push({ number, status: 'sent' });
+        } catch (err) {
+          results.push({ number, status: 'failed', error: err instanceof Error ? err.message : 'Failed' });
+        }
+      }
+      const sent = results.filter(r => r.status === 'sent').length;
+      const failed = results.filter(r => r.status === 'failed').length;
+      return reply.send({ sent, failed, results });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Broadcast failed.' });
     }
   });
 }
