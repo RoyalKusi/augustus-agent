@@ -373,10 +373,10 @@ export default function Businesses() {
                             <button
                               onClick={() => toggleReferral(b.id, info.referralEnabled)}
                               style={{
-                                padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: 'none',
+                                padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                                border: `1px solid ${info.referralEnabled ? '#feb2b2' : '#9ae6b4'}`,
                                 background: info.referralEnabled ? '#fff5f5' : '#f0fff4',
                                 color: info.referralEnabled ? '#c53030' : '#276749',
-                                border: `1px solid ${info.referralEnabled ? '#feb2b2' : '#9ae6b4'}` as string,
                               }}
                             >
                               {info.referralEnabled ? 'Disable Referral' : 'Enable Referral'}
