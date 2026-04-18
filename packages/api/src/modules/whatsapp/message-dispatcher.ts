@@ -52,7 +52,8 @@ export type CarouselProduct = {
   name: string;
   price: number;
   currency: string;
-  imageUrl: string;
+  imageUrl?: string;
+  description?: string;
 };
 
 /** Req 6.2: at least 1 and at most 10 products */
@@ -148,33 +149,91 @@ function buildQuickReplyPayload(msg: QuickReplyMessage): Record<string, unknown>
 }
 
 /**
- * Carousel: interactive list message.
- * Req 6.1 — each row contains product name, price, and a "View Details" button.
+ * Native WhatsApp interactive carousel (horizontally scrollable cards).
+ * Each card has: image header, body text (name + price + description),
+ * and a quick-reply "Order Now" button.
+ *
+ * API format: interactive.type = "carousel"
+ * Requires 2–10 cards. Cards without images fall back to text-only body.
+ * Req 6.1 — each card shows product name, price, and an order button.
  * Req 6.2 — 1–10 products enforced before calling this function.
  */
 function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
-  const rows = msg.products.map((p) => ({
-    id: p.id,
-    title: p.name.slice(0, 24), // WhatsApp list row title max 24 chars
-    description: `${p.currency} ${p.price.toFixed(2)} — View Details`,
-  }));
+  const cards = msg.products.map((p, index) => {
+    const priceStr = `${p.currency} ${p.price.toFixed(2)}`;
+    const bodyText = p.description
+      ? `*${p.name}*\n${priceStr}\n${p.description.slice(0, 60)}`
+      : `*${p.name}*\n${priceStr}`;
 
+    const card: Record<string, unknown> = {
+      card_index: index,
+      components: [
+        {
+          type: 'body',
+          parameters: [{ type: 'text', text: bodyText }],
+        },
+        {
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: 0,
+          parameters: [{ type: 'payload', payload: `order_${p.id}` }],
+        },
+      ],
+    };
+
+    if (p.imageUrl) {
+      card['header'] = {
+        type: 'image',
+        image: { link: p.imageUrl },
+      };
+    }
+
+    return card;
+  });
+
+  // Native WhatsApp Cloud API carousel format
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
     to: msg.to,
     type: 'interactive',
     interactive: {
-      type: 'list',
-      body: { text: 'Here are the products for you:' },
+      type: 'carousel',
+      body: {
+        text: 'Here are some options for you 👇',
+      },
       action: {
-        button: 'View Details',
-        sections: [
-          {
-            title: 'Products',
-            rows,
-          },
-        ],
+        cards: msg.products.map((p, index) => {
+          const priceStr = `${p.currency} ${p.price.toFixed(2)}`;
+          const bodyText = p.description
+            ? `*${p.name}*\n${priceStr}\n${p.description.slice(0, 60)}`
+            : `*${p.name}*\n${priceStr}`;
+
+          const card: Record<string, unknown> = {
+            card_index: index,
+            body: { text: bodyText },
+            action: {
+              buttons: [
+                {
+                  type: 'reply',
+                  reply: {
+                    id: `order_${p.id}`,
+                    title: '🛒 Order Now',
+                  },
+                },
+              ],
+            },
+          };
+
+          if (p.imageUrl) {
+            card['header'] = {
+              type: 'image',
+              image: { link: p.imageUrl },
+            };
+          }
+
+          return card;
+        }),
       },
     },
   };

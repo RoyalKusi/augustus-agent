@@ -504,7 +504,10 @@ export async function processInboundMessage(msg) {
       const sortedProducts = [...productRows.rows].sort((a, b) =>
         isPriceSensitive ? Number(a.price) - Number(b.price) : a.name.localeCompare(b.name)
       );
-      for (const p of sortedProducts) {
+
+      if (sortedProducts.length === 1) {
+        // Single product — send image + quick reply button (more personal)
+        const p = sortedProducts[0];
         const imageUrl = p.image_urls?.[0];
         const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
         if (imageUrl) {
@@ -512,12 +515,26 @@ export async function processInboundMessage(msg) {
         } else {
           await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: productCaption });
         }
-        // Send quick reply button for easy ordering
         await sendMessage(businessId, {
           type: 'quick_reply',
           to: customerWaNumber,
-          body: `Order ${p.name}?`,
+          body: `Would you like to order ${p.name}?`,
           buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+        });
+      } else {
+        // Multiple products — send native horizontally scrollable carousel
+        const carouselProducts = sortedProducts.map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          currency: p.currency,
+          imageUrl: p.image_urls?.[0] ?? undefined,
+          description: p.description ? String(p.description).slice(0, 60) : undefined,
+        }));
+        await sendMessage(businessId, {
+          type: 'carousel',
+          to: customerWaNumber,
+          products: carouselProducts,
         });
       }
     }
