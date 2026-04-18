@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import CreditUsageWidget from './CreditUsageWidget';
 import { isTokenExpired, redirectToLogin, apiFetch } from '../api';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { NotificationBadge } from './NotificationBadge';
+import { NotificationCenter } from './NotificationCenter';
 
 function decodeToken(token: string): { name?: string; email?: string } {
   try {
@@ -47,6 +49,8 @@ export default function DashboardLayout() {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [referralEnabled, setReferralEnabled] = useState(false);
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const token = localStorage.getItem('augustus_token');
 
   // Close sidebar on route change (mobile)
@@ -143,6 +147,20 @@ export default function DashboardLayout() {
       {sidebar}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Desktop top bar */}
+        {!isMobile && (
+          <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', position: 'sticky', top: 0, zIndex: 100 }}>
+            <div style={{ position: 'relative' }}>
+              <NotificationBadge onClick={() => setNotificationCenterOpen(!notificationCenterOpen)} />
+              <NotificationCenter 
+                isOpen={notificationCenterOpen} 
+                onClose={() => setNotificationCenterOpen(false)}
+                onCountChange={setUnreadCount}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Mobile top bar */}
         {isMobile && (
           <div style={{ background: '#1a202c', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 100 }}>
@@ -154,7 +172,15 @@ export default function DashboardLayout() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#63b3ed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>
-            <span style={{ fontWeight: 600, fontSize: 15 }}>{currentLabel}</span>
+            <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>{currentLabel}</span>
+            <div style={{ position: 'relative' }}>
+              <NotificationBadge onClick={() => setNotificationCenterOpen(!notificationCenterOpen)} />
+              <NotificationCenter 
+                isOpen={notificationCenterOpen} 
+                onClose={() => setNotificationCenterOpen(false)}
+                onCountChange={setUnreadCount}
+              />
+            </div>
           </div>
         )}
 
