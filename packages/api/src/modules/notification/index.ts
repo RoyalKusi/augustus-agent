@@ -3,4 +3,5 @@ export {
   emailTemplates,
   sendSupportTicketAck,
   sendSupportTicketStatusUpdate,
+  sendAdminTicketReply,
 } from './notification.service.js';

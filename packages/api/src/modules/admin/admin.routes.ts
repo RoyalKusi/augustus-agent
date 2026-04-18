@@ -24,6 +24,8 @@ import {
   getApiKeyStatus,
   listAllSupportTickets,
   updateSupportTicketStatus,
+  listTicketMessages,
+  sendTicketMessage,
   logAuditEvent,
   sendLoginOtp,
 } from './admin.service.js';
@@ -309,6 +311,36 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to update ticket.';
       const code = message.includes('not found') ? 404 : message.includes('Invalid') ? 400 : 500;
+      return reply.status(code).send({ error: message });
+    }
+  });
+
+  // GET /admin/support/:id/messages — list messages for a ticket
+  app.get('/admin/support/:id/messages', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const result = await listTicketMessages(id);
+      return reply.send(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to list messages.';
+      const code = message.includes('not found') ? 404 : 500;
+      return reply.status(code).send({ error: message });
+    }
+  });
+
+  // POST /admin/support/:id/messages — send a message on a ticket
+  app.post('/admin/support/:id/messages', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { body: msgBody } = request.body as { body?: string };
+    if (!msgBody || !msgBody.trim()) {
+      return reply.status(400).send({ error: 'Missing required field: body.' });
+    }
+    try {
+      const message = await sendTicketMessage(id, request.operatorId, msgBody);
+      return reply.status(201).send(message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to send message.';
+      const code = message.includes('not found') ? 404 : 400;
       return reply.status(code).send({ error: message });
     }
   });

@@ -966,6 +966,109 @@ export async function listAllSupportTickets(filters: {
   return { tickets, total: tickets.length };
 }
 
+// ─── Support Ticket Messaging ─────────────────────────────────────────────────
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  senderType: 'admin' | 'business';
+  senderId: string;
+  body: string;
+  createdAt: string;
+}
+
+export async function listTicketMessages(ticketId: string): Promise<{ messages: TicketMessage[] }> {
+  // Verify ticket exists
+  const check = await pool.query<{ id: string }>(
+    `SELECT id FROM support_tickets WHERE id = $1`,
+    [ticketId],
+  );
+  if (check.rows.length === 0) throw new Error('Support ticket not found.');
+
+  const result = await pool.query<{
+    id: string;
+    ticket_id: string;
+    sender_type: 'admin' | 'business';
+    sender_id: string;
+    body: string;
+    created_at: Date;
+  }>(
+    `SELECT id, ticket_id, sender_type, sender_id, body, created_at
+     FROM support_ticket_messages
+     WHERE ticket_id = $1
+     ORDER BY created_at ASC`,
+    [ticketId],
+  );
+
+  return {
+    messages: result.rows.map((row) => ({
+      id: row.id,
+      ticketId: row.ticket_id,
+      senderType: row.sender_type,
+      senderId: row.sender_id,
+      body: row.body,
+      createdAt: row.created_at.toISOString(),
+    })),
+  };
+}
+
+export async function sendTicketMessage(
+  ticketId: string,
+  operatorId: string,
+  body: string,
+): Promise<TicketMessage> {
+  if (!body || !body.trim()) throw new Error('Message body cannot be empty.');
+
+  // Verify ticket exists and get business email for notification
+  const ticketResult = await pool.query<{
+    id: string;
+    ticket_reference: string;
+    subject: string;
+    business_email: string;
+  }>(
+    `SELECT st.id, st.ticket_reference, st.subject, b.email AS business_email
+     FROM support_tickets st
+     JOIN businesses b ON b.id = st.business_id
+     WHERE st.id = $1`,
+    [ticketId],
+  );
+  if (ticketResult.rows.length === 0) throw new Error('Support ticket not found.');
+  const ticket = ticketResult.rows[0];
+
+  const result = await pool.query<{
+    id: string;
+    ticket_id: string;
+    sender_type: 'admin' | 'business';
+    sender_id: string;
+    body: string;
+    created_at: Date;
+  }>(
+    `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_id, body)
+     VALUES ($1, 'admin', $2, $3)
+     RETURNING *`,
+    [ticketId, operatorId, body.trim()],
+  );
+
+  const row = result.rows[0];
+
+  await logAuditEvent(operatorId, 'send_ticket_message', 'ticket', ticketId, {
+    messageId: row.id,
+  });
+
+  // Notify the business via email (best-effort)
+  const { sendAdminTicketReply } = await import('../../modules/notification/notification.service.js');
+  void sendAdminTicketReply(ticket.business_email, ticket.ticket_reference, ticket.subject, body.trim()).catch(() => {});
+
+  return {
+    id: row.id,
+    ticketId: row.ticket_id,
+    senderType: row.sender_type,
+    senderId: row.sender_id,
+    body: row.body,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
 export async function updateSupportTicketStatus(
   ticketId: string,
   newStatus: string,

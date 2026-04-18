@@ -223,6 +223,25 @@ export const emailTemplates = {
       text: `Your Augustus support ticket ${ticketReference} status has been updated to: ${statusLabel}.`,
     };
   },
+
+  adminTicketReply(
+    ticketReference: string,
+    subject: string,
+    replyBody: string,
+  ): { subject: string; html: string; text: string } {
+    return {
+      subject: `New reply on your support ticket [${ticketReference}]`,
+      html: `
+        <h2>New Reply on Your Support Ticket</h2>
+        <p>The Augustus support team has replied to your ticket <strong>${ticketReference}</strong>: <em>${subject}</em></p>
+        <div style="background:#f7fafc;border-left:4px solid #3182ce;padding:12px 16px;margin:16px 0;border-radius:4px;">
+          <p style="margin:0;white-space:pre-wrap;">${replyBody.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+        </div>
+        <p>Log in to your Augustus dashboard to view the full conversation and reply.</p>
+      `,
+      text: `The Augustus support team has replied to your ticket ${ticketReference}:\n\n${replyBody}\n\nLog in to your dashboard to view the full conversation.`,
+    };
+  },
 };
 
 // ─── Task 14.3: Support ticket acknowledgement ────────────────────────────────
@@ -244,5 +263,17 @@ export async function sendSupportTicketStatusUpdate(
   newStatus: string,
 ): Promise<void> {
   const template = emailTemplates.supportTicketStatusUpdate(ticketReference, newStatus);
+  await sendEmail(to, template.subject, template.html, template.text);
+}
+
+// ─── Admin ticket reply notification ─────────────────────────────────────────
+
+export async function sendAdminTicketReply(
+  to: string,
+  ticketReference: string,
+  subject: string,
+  replyBody: string,
+): Promise<void> {
+  const template = emailTemplates.adminTicketReply(ticketReference, subject, replyBody);
   await sendEmail(to, template.subject, template.html, template.text);
 }
