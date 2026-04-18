@@ -345,7 +345,105 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // ─── Billing Period Management ────────────────────────────────────────────
+  // ─── Mass Email ──────────────────────────────────────────────────────────
+
+  // POST /admin/businesses/email-blast — send email to all or selected businesses
+  app.post('/admin/businesses/email-blast', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { subject, htmlBody, textBody, businessIds, filters } = request.body as {
+      subject: string;
+      htmlBody: string;
+      textBody?: string;
+      businessIds?: string[];          // if provided, send only to these
+      filters?: {                       // if provided (and no businessIds), filter by these
+        status?: string;
+        plan?: string;
+      };
+    };
+
+    if (!subject?.trim()) return reply.status(400).send({ error: 'subject is required.' });
+    if (!htmlBody?.trim()) return reply.status(400).send({ error: 'htmlBody is required.' });
+
+    // Resolve recipient list
+    let emails: Array<{ id: string; name: string; email: string }> = [];
+
+    if (businessIds && businessIds.length > 0) {
+      // Specific businesses selected
+      const result = await pool.query<{ id: string; name: string; email: string }>(
+        `SELECT id, name, email FROM businesses WHERE id = ANY($1) ORDER BY name`,
+        [businessIds],
+      );
+      emails = result.rows;
+    } else {
+      // All businesses, optionally filtered
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let idx = 1;
+
+      if (filters?.status) {
+        conditions.push(`b.status = $${idx++}`);
+        params.push(filters.status);
+      }
+      if (filters?.plan) {
+        conditions.push(`s.plan = $${idx++}`);
+        params.push(filters.plan);
+      }
+
+      const join = filters?.plan
+        ? `LEFT JOIN subscriptions s ON s.business_id = b.id AND s.status = 'active'`
+        : '';
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const result = await pool.query<{ id: string; name: string; email: string }>(
+        `SELECT b.id, b.name, b.email FROM businesses b ${join} ${where} ORDER BY b.name`,
+        params,
+      );
+      emails = result.rows;
+    }
+
+    if (emails.length === 0) {
+      return reply.status(400).send({ error: 'No recipients matched the selection.' });
+    }
+
+    // Send emails — fire sequentially with small delay to avoid rate limits
+    const { sendEmail } = await import('../notification/notification.service.js');
+    let sent = 0;
+    let failed = 0;
+    const failures: string[] = [];
+
+    for (const recipient of emails) {
+      try {
+        // Personalise the HTML with the recipient's name
+        const personalised = htmlBody
+          .replace(/\{\{name\}\}/gi, recipient.name)
+          .replace(/\{\{email\}\}/gi, recipient.email);
+        const personalisedText = textBody
+          ? textBody.replace(/\{\{name\}\}/gi, recipient.name).replace(/\{\{email\}\}/gi, recipient.email)
+          : undefined;
+
+        await sendEmail(recipient.email, subject, personalised, personalisedText);
+        sent++;
+      } catch (err) {
+        failed++;
+        failures.push(recipient.email);
+        console.error(`[EmailBlast] Failed to send to ${recipient.email}:`, err);
+      }
+    }
+
+    await logAuditEvent(
+      request.operatorId,
+      'email_blast',
+      'businesses',
+      request.operatorId,
+      { subject, sent, failed, total: emails.length },
+    );
+
+    return reply.send({
+      sent,
+      failed,
+      total: emails.length,
+      failures: failures.slice(0, 20), // cap to avoid huge response
+    });
+  });
 
   // GET /admin/billing-periods — list all billing periods
   app.get('/admin/billing-periods', { preHandler: authenticateOperator }, async (_request, reply) => {
