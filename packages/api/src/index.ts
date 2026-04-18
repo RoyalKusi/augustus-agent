@@ -28,6 +28,7 @@ import {
 import { expireStaleOrders } from './modules/payment/payment.service.js';
 import { runBillingCycleResetJob } from './modules/token-budget/token-budget.service.js';
 import { sendRenewalReminders, applyPendingDowngrades, retryFailedPayments } from './modules/subscription/subscription.service.js';
+import { cleanupOldNotifications } from './modules/notification/in-app-notification.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

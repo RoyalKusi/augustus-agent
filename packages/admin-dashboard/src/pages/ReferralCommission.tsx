@@ -144,15 +144,17 @@ export default function ReferralCommission() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-6 space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <Settings className="w-8 h-8 text-blue-600" />
+            <div className="p-2 bg-blue-100 rounded-xl">
+              <Settings className="w-8 h-8 text-blue-600" />
+            </div>
             Referral Commission Settings
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-gray-600 mt-2 ml-14">
             Manage commission rates and earnings periods for the referral program
           </p>
         </div>
@@ -160,18 +162,18 @@ export default function ReferralCommission() {
 
       {/* Error Alert */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 flex items-start gap-3 shadow-sm">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-red-900">Error</h3>
-            <p className="text-red-700 text-sm">{error}</p>
+            <p className="text-red-700 text-sm mt-1">{error}</p>
           </div>
         </div>
       )}
 
       {/* Success Alert */}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 flex items-start gap-3 shadow-sm">
           <div className="w-5 h-5 bg-green-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
             <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -179,79 +181,80 @@ export default function ReferralCommission() {
           </div>
           <div>
             <h3 className="font-semibold text-green-900">Success</h3>
-            <p className="text-green-700 text-sm">{success}</p>
+            <p className="text-green-700 text-sm mt-1">{success}</p>
           </div>
         </div>
       )}
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+        <div className="bg-gradient-to-br from-blue-50 via-blue-100 to-blue-50 rounded-2xl p-6 border border-blue-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-blue-600 rounded-lg">
+            <div className="p-3 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md">
               <DollarSign className="w-6 h-6 text-white" />
             </div>
           </div>
-          <h3 className="text-sm font-medium text-blue-900 mb-1">Total Earnings</h3>
-          <p className="text-3xl font-bold text-blue-900">
+          <h3 className="text-sm font-semibold text-blue-900 mb-1 uppercase tracking-wide">Total Earnings</h3>
+          <p className="text-3xl font-bold text-blue-900 mb-2">
             ${stats?.totalEarningsUsd.toFixed(2) || '0.00'}
           </p>
-          <p className="text-xs text-blue-700 mt-2">System-wide referral earnings</p>
+          <p className="text-xs text-blue-700">System-wide referral earnings</p>
         </div>
 
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+        <div className="bg-gradient-to-br from-green-50 via-green-100 to-green-50 rounded-2xl p-6 border border-green-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-green-600 rounded-lg">
+            <div className="p-3 bg-gradient-to-br from-green-600 to-green-700 rounded-xl shadow-md">
               <Users className="w-6 h-6 text-white" />
             </div>
           </div>
-          <h3 className="text-sm font-medium text-green-900 mb-1">Valid Referrals</h3>
-          <p className="text-3xl font-bold text-green-900">
+          <h3 className="text-sm font-semibold text-green-900 mb-1 uppercase tracking-wide">Valid Referrals</h3>
+          <p className="text-3xl font-bold text-green-900 mb-2">
             {stats?.totalValidReferrals || 0}
           </p>
-          <p className="text-xs text-green-700 mt-2">Referrals earning commissions</p>
+          <p className="text-xs text-green-700">Referrals earning commissions</p>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+        <div className="bg-gradient-to-br from-purple-50 via-purple-100 to-purple-50 rounded-2xl p-6 border border-purple-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-purple-600 rounded-lg">
+            <div className="p-3 bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl shadow-md">
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
           </div>
-          <h3 className="text-sm font-medium text-purple-900 mb-1">Subscribed Referrals</h3>
-          <p className="text-3xl font-bold text-purple-900">
+          <h3 className="text-sm font-semibold text-purple-900 mb-1 uppercase tracking-wide">Subscribed Referrals</h3>
+          <p className="text-3xl font-bold text-purple-900 mb-2">
             {stats?.totalSubscribedReferrals || 0}
           </p>
-          <p className="text-xs text-purple-700 mt-2">Active subscriptions</p>
+          <p className="text-xs text-purple-700">Active subscriptions</p>
         </div>
 
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
+        <div className="bg-gradient-to-br from-orange-50 via-orange-100 to-orange-50 rounded-2xl p-6 border border-orange-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-orange-600 rounded-lg">
+            <div className="p-3 bg-gradient-to-br from-orange-600 to-orange-700 rounded-xl shadow-md">
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
           </div>
-          <h3 className="text-sm font-medium text-orange-900 mb-1">Avg per Referral</h3>
-          <p className="text-3xl font-bold text-orange-900">
+          <h3 className="text-sm font-semibold text-orange-900 mb-1 uppercase tracking-wide">Avg per Referral</h3>
+          <p className="text-3xl font-bold text-orange-900 mb-2">
             ${stats?.averageEarningsPerReferral.toFixed(2) || '0.00'}
           </p>
-          <p className="text-xs text-orange-700 mt-2">Average earnings</p>
+          <p className="text-xs text-orange-700">Average earnings</p>
         </div>
       </div>
 
       {/* Settings Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+      <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 px-6 py-5">
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Settings className="w-5 h-5" />
             Commission Configuration
           </h2>
+          <p className="text-blue-100 text-sm mt-1">Configure system-wide referral commission settings</p>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-8 space-y-8">
           {/* Commission Percentage */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-bold text-gray-800 mb-3 uppercase tracking-wide">
               Commission Percentage
             </label>
             <div className="relative">
@@ -262,19 +265,19 @@ export default function ReferralCommission() {
                 step="0.1"
                 value={commissionPercentage}
                 onChange={(e) => setCommissionPercentage(parseFloat(e.target.value) || 0)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg font-medium"
+                className="w-full px-5 py-4 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold transition-all"
                 placeholder="10"
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-lg">
                 %
               </span>
             </div>
-            <p className="text-sm text-gray-600 mt-2">
+            <p className="text-sm text-gray-600 mt-3">
               Percentage of subscription payments earned as commission (0-100%)
             </p>
-            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
               <p className="text-sm text-blue-900">
-                <span className="font-semibold">Example:</span> With {commissionPercentage}% commission,
+                <span className="font-bold">Example:</span> With {commissionPercentage}% commission,
                 a $100 subscription payment earns ${(commissionPercentage * 1).toFixed(2)} in referral
                 commission.
               </p>
@@ -283,7 +286,7 @@ export default function ReferralCommission() {
 
           {/* Earnings Period */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+            <label className="block text-sm font-bold text-gray-800 mb-3 uppercase tracking-wide flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               Earnings Period (Months)
             </label>
@@ -295,19 +298,19 @@ export default function ReferralCommission() {
                 step="1"
                 value={earningsPeriodMonths}
                 onChange={(e) => setEarningsPeriodMonths(parseInt(e.target.value) || 1)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg font-medium"
+                className="w-full px-5 py-4 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold transition-all"
                 placeholder="12"
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-lg">
                 months
               </span>
             </div>
-            <p className="text-sm text-gray-600 mt-2">
+            <p className="text-sm text-gray-600 mt-3">
               Duration for which referrers earn commissions from referred businesses (1-60 months)
             </p>
-            <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
               <p className="text-sm text-purple-900">
-                <span className="font-semibold">Example:</span> With {earningsPeriodMonths} months,
+                <span className="font-bold">Example:</span> With {earningsPeriodMonths} months,
                 referrers earn commissions on all subscription payments made by their referrals for{' '}
                 {earningsPeriodMonths} {earningsPeriodMonths === 1 ? 'month' : 'months'} after
                 registration.
@@ -317,27 +320,28 @@ export default function ReferralCommission() {
 
           {/* Last Updated */}
           {settings && (
-            <div className="pt-4 border-t border-gray-200">
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">Last updated:</span>{' '}
+            <div className="pt-6 border-t-2 border-gray-200">
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold">Last updated:</span>{' '}
                 {new Date(settings.updatedAt).toLocaleString()}
               </p>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-4 pt-4">
+          <div className="flex items-center gap-4 pt-6">
             <button
               onClick={handleSave}
               disabled={!hasChanges || saving}
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+              className={`flex items-center gap-2 px-8 py-4 rounded-xl font-bold transition-all text-base ${
                 hasChanges && !saving
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
               <Save className="w-5 h-5" />
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving Changes...' : 'Save Changes'}
             </button>
 
             {hasChanges && (
@@ -348,9 +352,9 @@ export default function ReferralCommission() {
                     setEarningsPeriodMonths(settings.earningsPeriodMonths);
                   }
                 }}
-                className="px-6 py-3 rounded-lg font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                className="px-8 py-4 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all border-2 border-gray-300"
               >
-                Reset
+                Reset Changes
               </button>
             )}
           </div>
@@ -358,27 +362,33 @@ export default function ReferralCommission() {
       </div>
 
       {/* Info Panel */}
-      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
-        <h3 className="text-lg font-semibold text-indigo-900 mb-3 flex items-center gap-2">
-          <AlertCircle className="w-5 h-5" />
+      <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl p-8 border-2 border-indigo-200 shadow-sm">
+        <h3 className="text-lg font-bold text-indigo-900 mb-4 flex items-center gap-2">
+          <div className="p-2 bg-indigo-600 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-white" />
+          </div>
           How Referral Commissions Work
         </h3>
-        <div className="space-y-2 text-sm text-indigo-800">
-          <p>
-            • <span className="font-semibold">Commission Rate:</span> Referrers earn a percentage of
-            every subscription payment made by businesses they refer.
+        <div className="space-y-3 text-sm text-indigo-900 ml-11">
+          <p className="flex items-start gap-2">
+            <span className="text-indigo-600 font-bold mt-0.5">•</span>
+            <span><span className="font-bold">Commission Rate:</span> Referrers earn a percentage of
+            every subscription payment made by businesses they refer.</span>
           </p>
-          <p>
-            • <span className="font-semibold">Earnings Period:</span> Commissions are earned for a
-            specified duration after the referred business registers.
+          <p className="flex items-start gap-2">
+            <span className="text-indigo-600 font-bold mt-0.5">•</span>
+            <span><span className="font-bold">Earnings Period:</span> Commissions are earned for a
+            specified duration after the referred business registers.</span>
           </p>
-          <p>
-            • <span className="font-semibold">Automatic Calculation:</span> Earnings are calculated
-            automatically when referred businesses make subscription payments.
+          <p className="flex items-start gap-2">
+            <span className="text-indigo-600 font-bold mt-0.5">•</span>
+            <span><span className="font-bold">Automatic Calculation:</span> Earnings are calculated
+            automatically when referred businesses make subscription payments.</span>
           </p>
-          <p>
-            • <span className="font-semibold">Wallet Credit:</span> Commissions are credited to the
-            referrer's wallet and can be withdrawn or used for payments.
+          <p className="flex items-start gap-2">
+            <span className="text-indigo-600 font-bold mt-0.5">•</span>
+            <span><span className="font-bold">Wallet Credit:</span> Commissions are credited to the
+            referrer's wallet and can be withdrawn or used for payments.</span>
           </p>
         </div>
       </div>

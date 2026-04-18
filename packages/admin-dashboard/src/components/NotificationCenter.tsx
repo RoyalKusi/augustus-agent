@@ -110,22 +110,30 @@ export function NotificationCenter({ isOpen, onClose, onCountChange }: Notificat
       />
 
       {/* Dropdown Panel */}
-      <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl z-50 max-h-[600px] flex flex-col">
+      <div 
+        className="absolute top-full right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl z-50 max-h-[600px] flex flex-col border border-gray-200"
+        style={{
+          transform: 'translateX(0)',
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+            Notifications
+          </h3>
           <div className="flex items-center gap-2">
             <button
               onClick={handleMarkAllAsRead}
-              className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors flex items-center gap-1 font-medium"
               title="Mark all as read"
             >
-              <CheckCheck className="w-4 h-4" />
+              <CheckCheck className="w-3.5 h-3.5" />
               Mark all read
             </button>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1 rounded-md transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -139,8 +147,12 @@ export function NotificationCenter({ isOpen, onClose, onCountChange }: Notificat
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
           ) : notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-gray-500">
-              <p className="text-sm">No notifications</p>
+            <div className="flex flex-col items-center justify-center p-12 text-gray-500">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                <CheckCheck className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium">All caught up!</p>
+              <p className="text-xs text-gray-400 mt-1">No new notifications</p>
             </div>
           ) : (
             notifications.map(notification => (
@@ -155,12 +167,12 @@ export function NotificationCenter({ isOpen, onClose, onCountChange }: Notificat
 
         {/* Footer */}
         {hasMore && (
-          <div className="p-4 border-t border-gray-200 text-center">
+          <div className="p-3 border-t border-gray-200 text-center bg-gray-50">
             <a
-              href="/notifications"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              href="/admin/notifications"
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline"
             >
-              View All
+              View All Notifications →
             </a>
           </div>
         )}

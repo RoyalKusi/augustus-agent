@@ -79,17 +79,22 @@ export default function AdminLayout() {
         <div style={{ 
           background: '#fff', 
           borderBottom: '1px solid #e2e8f0', 
-          padding: '12px 24px',
+          padding: '8px 24px',
           display: 'flex',
           justifyContent: 'flex-end',
           alignItems: 'center',
-          position: 'relative'
+          position: 'relative',
+          height: '60px'
         }}>
-          <NotificationBadge onClick={() => setNotificationCenterOpen(!notificationCenterOpen)} />
-          <NotificationCenter 
-            isOpen={notificationCenterOpen} 
-            onClose={() => setNotificationCenterOpen(false)}
-          />
+          <div style={{ position: 'relative' }}>
+            <NotificationBadge onClick={() => setNotificationCenterOpen(!notificationCenterOpen)} />
+            {notificationCenterOpen && (
+              <NotificationCenter 
+                isOpen={notificationCenterOpen} 
+                onClose={() => setNotificationCenterOpen(false)}
+              />
+            )}
+          </div>
         </div>
         <main style={{ flex: 1, padding: 24, background: '#f7fafc' }}>
           <Outlet />

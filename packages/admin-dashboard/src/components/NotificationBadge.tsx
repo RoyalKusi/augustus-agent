@@ -53,15 +53,18 @@ export function NotificationBadge({ onClick }: NotificationBadgeProps) {
   return (
     <button
       onClick={onClick}
-      className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg"
+      className="relative p-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-all duration-200"
       aria-label={`Notifications${shouldShow ? ` (${displayCount} unread)` : ''}`}
     >
-      <Bell className="w-6 h-6" />
+      <Bell className={`w-6 h-6 ${shouldShow ? 'text-blue-600' : ''}`} />
       {shouldShow && (
         <span
-          className={`absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full ${
-            animate ? 'animate-pulse' : ''
+          className={`absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold leading-none text-white bg-gradient-to-br from-red-500 to-red-600 rounded-full shadow-lg border-2 border-white ${
+            animate ? 'animate-bounce' : ''
           }`}
+          style={{
+            animation: animate ? 'bounce 0.5s ease-in-out 2' : 'none'
+          }}
         >
           {displayCount}
         </span>
