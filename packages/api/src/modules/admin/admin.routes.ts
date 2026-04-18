@@ -345,6 +345,86 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // ─── Billing Period Management ────────────────────────────────────────────
+
+  // GET /admin/billing-periods — list all billing periods
+  app.get('/admin/billing-periods', { preHandler: authenticateOperator }, async (_request, reply) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, months, discount_percent, label, is_active, updated_at
+         FROM subscription_billing_periods ORDER BY months ASC`,
+      );
+      return reply.send({ periods: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        months: Number(r.months),
+        discountPercent: Number(r.discount_percent),
+        label: r.label,
+        isActive: r.is_active,
+        updatedAt: r.updated_at,
+      })) });
+    } catch (err: unknown) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed to load billing periods.' });
+    }
+  });
+
+  // PUT /admin/billing-periods/:id — update a billing period
+  app.put('/admin/billing-periods/:id', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as {
+      discountPercent?: number;
+      label?: string;
+      isActive?: boolean;
+    };
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+    if (body.discountPercent !== undefined) {
+      if (body.discountPercent < 0 || body.discountPercent >= 100) {
+        return reply.status(400).send({ error: 'discountPercent must be between 0 and 99.99.' });
+      }
+      updates.push(`discount_percent = $${idx++}`); params.push(body.discountPercent);
+    }
+    if (body.label !== undefined) { updates.push(`label = $${idx++}`); params.push(body.label); }
+    if (body.isActive !== undefined) { updates.push(`is_active = $${idx++}`); params.push(body.isActive); }
+    if (updates.length === 0) return reply.status(400).send({ error: 'No fields to update.' });
+    updates.push(`updated_at = NOW()`);
+    params.push(id);
+    try {
+      const result = await pool.query(
+        `UPDATE subscription_billing_periods SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+        params,
+      );
+      if (result.rows.length === 0) return reply.status(404).send({ error: 'Billing period not found.' });
+      await logAuditEvent(request.operatorId, 'update_billing_period', 'billing_period', id, body as Record<string, unknown>);
+      return reply.send({ period: result.rows[0] });
+    } catch (err: unknown) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed to update.' });
+    }
+  });
+
+  // POST /admin/billing-periods — create a new billing period
+  app.post('/admin/billing-periods', { preHandler: authenticateOperator }, async (request, reply) => {
+    const body = request.body as { months: number; discountPercent?: number; label?: string };
+    if (!body.months || body.months < 1) return reply.status(400).send({ error: 'months must be a positive integer.' });
+    const discountPercent = body.discountPercent ?? 0;
+    if (discountPercent < 0 || discountPercent >= 100) {
+      return reply.status(400).send({ error: 'discountPercent must be between 0 and 99.99.' });
+    }
+    try {
+      const result = await pool.query(
+        `INSERT INTO subscription_billing_periods (months, discount_percent, label, is_active)
+         VALUES ($1, $2, $3, TRUE)
+         ON CONFLICT (months) DO UPDATE SET discount_percent = EXCLUDED.discount_percent, label = EXCLUDED.label, is_active = TRUE, updated_at = NOW()
+         RETURNING *`,
+        [body.months, discountPercent, body.label ?? `${body.months} Month${body.months > 1 ? 's' : ''}`],
+      );
+      await logAuditEvent(request.operatorId, 'create_billing_period', 'billing_period', result.rows[0].id, body as Record<string, unknown>);
+      return reply.status(201).send({ period: result.rows[0] });
+    } catch (err: unknown) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed to create.' });
+    }
+  });
+
   // ─── Plan Management ──────────────────────────────────────────────────────
 
   // GET /admin/plans — list all plan configs

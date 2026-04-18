@@ -44,6 +44,27 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ plans: Object.values(PLANS) });
   });
 
+  // GET /subscription/billing-periods — list active billing period options
+  app.get('/subscription/billing-periods', async (_request, reply) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, months, discount_percent, label
+         FROM subscription_billing_periods
+         WHERE is_active = TRUE
+         ORDER BY months ASC`,
+      );
+      return reply.send({ periods: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        months: Number(r.months),
+        discountPercent: Number(r.discount_percent),
+        label: r.label ?? `${r.months} Month${Number(r.months) > 1 ? 's' : ''}`,
+      })) });
+    } catch {
+      // Fallback if table doesn't exist yet
+      return reply.send({ periods: [] });
+    }
+  });
+
   // GET /subscription — get active subscription for authenticated business
   app.get('/subscription', async (request, reply) => {
     const businessId = (request as unknown as { businessId: string }).businessId;
@@ -119,7 +140,8 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
   // POST /subscription/initiate-payment — initiate Paynow payment for a plan
   app.post('/subscription/initiate-payment', { preHandler: authenticate }, async (request, reply) => {
     const businessId = request.businessId;
-    const { tier } = request.body as { tier: string };
+    const { tier, billingMonths: rawMonths } = request.body as { tier: string; billingMonths?: number };
+    const billingMonths = Math.max(1, Math.floor(Number(rawMonths) || 1));
 
     if (!isValidTier(tier)) {
       return reply.status(400).send({ error: 'Invalid tier. Must be silver, gold, or platinum.' });
@@ -129,7 +151,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
     if (!plan) return reply.status(400).send({ error: 'Plan not found.' });
 
     // Try to get live price from plan_config DB, fall back to hardcoded
-    let planPrice = plan.priceUsd;
+    let monthlyPrice = plan.priceUsd;
     try {
       const dbPlan = await pool.query<{ price_usd: string; is_available: boolean }>(
         `SELECT price_usd, is_available FROM plan_config WHERE tier = $1`,
@@ -139,9 +161,27 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
         if (!dbPlan.rows[0].is_available) {
           return reply.status(400).send({ error: 'This plan is not currently available.' });
         }
-        planPrice = Number(dbPlan.rows[0].price_usd);
+        monthlyPrice = Number(dbPlan.rows[0].price_usd);
       }
     } catch { /* use hardcoded fallback */ }
+
+    // Resolve discount for the chosen billing period
+    let discountPercent = 0;
+    if (billingMonths > 1) {
+      try {
+        const periodRow = await pool.query<{ discount_percent: string }>(
+          `SELECT discount_percent FROM subscription_billing_periods WHERE months = $1 AND is_active = TRUE`,
+          [billingMonths],
+        );
+        if (periodRow.rows.length > 0) {
+          discountPercent = Number(periodRow.rows[0].discount_percent);
+        }
+      } catch { /* no discount if table missing */ }
+    }
+
+    const totalBeforeDiscount = monthlyPrice * billingMonths;
+    const discountAmount = totalBeforeDiscount * (discountPercent / 100);
+    const totalAmount = Number((totalBeforeDiscount - discountAmount).toFixed(2));
 
     // Get business email for Paynow
     const bizResult = await pool.query<{ email: string }>(
@@ -150,13 +190,18 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
     );
     const email = bizResult.rows[0]?.email ?? '';
 
+    const periodLabel = billingMonths === 1 ? 'monthly' : `${billingMonths}-month`;
+    const description = `Augustus ${plan.displayName} subscription (${periodLabel})`;
+
     try {
       const result = await initiateSubscriptionCharge(
         businessId,
         email,
-        planPrice,
-        `Augustus ${plan.displayName} subscription`,
+        totalAmount,
+        description,
         tier,
+        billingMonths,
+        discountPercent,
       );
 
       if (!result.success) {
@@ -168,6 +213,9 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
         paynowReference: result.paynowReference,
         pollUrl: result.pollUrl,
         returnUrl: result.returnUrl,
+        totalAmount,
+        discountPercent,
+        billingMonths,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Payment initiation failed.';
@@ -192,15 +240,19 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'Invalid tier.' });
     }
 
-    // Resolve poll URL — use provided one or fall back to stored record
+    // Resolve poll URL and billing_months from stored record
     let resolvedPollUrl = pollUrl ?? '';
-    if (!resolvedPollUrl) {
-      const stored = await pool.query<{ poll_url: string | null }>(
-        `SELECT poll_url FROM subscription_payments WHERE paynow_reference = $1 AND business_id = $2 LIMIT 1`,
+    let billingMonths = 1;
+    try {
+      const stored = await pool.query<{ poll_url: string | null; billing_months: number }>(
+        `SELECT poll_url, billing_months FROM subscription_payments WHERE paynow_reference = $1 AND business_id = $2 LIMIT 1`,
         [paynowReference, businessId],
       );
-      resolvedPollUrl = stored.rows[0]?.poll_url ?? '';
-    }
+      if (stored.rows[0]) {
+        if (!resolvedPollUrl) resolvedPollUrl = stored.rows[0].poll_url ?? '';
+        billingMonths = stored.rows[0].billing_months ?? 1;
+      }
+    } catch { /* ignore */ }
 
     if (!resolvedPollUrl) {
       return reply.status(400).send({ error: 'No poll URL available for this payment.' });
@@ -210,7 +262,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
       const result = await pollSubscriptionPaymentStatus(resolvedPollUrl);
 
       if (result.status === 'paid') {
-        await activateSubscription(businessId, tier, result.paynowReference ?? paynowReference);
+        await activateSubscription(businessId, tier, result.paynowReference ?? paynowReference, billingMonths);
         await pool.query(
           `UPDATE subscription_payments SET status = 'paid', updated_at = NOW() WHERE paynow_reference = $1`,
           [result.paynowReference ?? paynowReference],

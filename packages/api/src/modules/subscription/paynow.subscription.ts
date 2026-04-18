@@ -39,6 +39,8 @@ export async function initiateSubscriptionCharge(
   amountUsd: number,
   description: string,
   tier: PlanTier,
+  billingMonths = 1,
+  discountPercent = 0,
 ): Promise<PaynowChargeResult> {
   if (!config.paynow.integrationId || !config.paynow.integrationKey) {
     return { success: false, paynowReference: null, pollUrl: null, paymentUrl: null, error: 'Paynow integration not configured.' };
@@ -88,10 +90,10 @@ export async function initiateSubscriptionCharge(
 
     // Store payment record so webhook can resolve businessId + tier
     await pool.query(
-      `INSERT INTO subscription_payments (business_id, tier, paynow_reference, poll_url, status)
-       VALUES ($1, $2, $3, $4, 'pending')
+      `INSERT INTO subscription_payments (business_id, tier, paynow_reference, poll_url, status, billing_months, discount_percent)
+       VALUES ($1, $2, $3, $4, 'pending', $5, $6)
        ON CONFLICT (paynow_reference) DO NOTHING`,
-      [businessId, tier, paynowReference, pollUrl],
+      [businessId, tier, paynowReference, pollUrl, billingMonths, discountPercent],
     );
 
     // Build final return URL with poll_url appended now that we have it
@@ -165,7 +167,18 @@ export async function handleSubscriptionPaymentWebhook(payload: {
   if (!businessId || !tier) return; // can't process without these
 
   if (status === 'Paid' || status === 'paid') {
-    await activateSubscription(businessId, tier, paynowReference);
+    // Look up billing_months from the payment record
+    let billingMonths = 1;
+    if (paynowReference) {
+      try {
+        const pmRow = await pool.query<{ billing_months: number }>(
+          `SELECT billing_months FROM subscription_payments WHERE paynow_reference = $1 LIMIT 1`,
+          [paynowReference],
+        );
+        billingMonths = pmRow.rows[0]?.billing_months ?? 1;
+      } catch { /* default to 1 */ }
+    }
+    await activateSubscription(businessId, tier, paynowReference, billingMonths);
     await pool.query(
       `UPDATE subscription_payments SET status = 'paid', updated_at = NOW() WHERE paynow_reference = $1`,
       [paynowReference],

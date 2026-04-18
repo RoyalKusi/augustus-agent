@@ -68,6 +68,7 @@ export async function activateSubscription(
   businessId: string,
   tier: PlanTier,
   paynowReference: string,
+  billingMonths = 1,
 ): Promise<Subscription> {
   if (!isValidTier(tier)) {
     throw new Error(`Invalid subscription tier: ${tier}`);
@@ -77,7 +78,7 @@ export async function activateSubscription(
   const now = new Date();
   const cycleStart = now;
   const renewalDate = new Date(now);
-  renewalDate.setMonth(renewalDate.getMonth() + 1);
+  renewalDate.setMonth(renewalDate.getMonth() + Math.max(1, billingMonths));
 
   const client = await pool.connect();
   try {
@@ -93,10 +94,10 @@ export async function activateSubscription(
     const result = await client.query<SubscriptionRow>(
       `INSERT INTO subscriptions
          (business_id, plan, price_usd, status, activation_timestamp, renewal_date,
-          billing_cycle_start, paynow_reference)
-       VALUES ($1, $2, $3, 'active', $4, $5, $6, $7)
+          billing_cycle_start, paynow_reference, billing_months)
+       VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)
        RETURNING *`,
-      [businessId, tier, plan.priceUsd, now, renewalDate, cycleStart, paynowReference],
+      [businessId, tier, plan.priceUsd, now, renewalDate, cycleStart, paynowReference, Math.max(1, billingMonths)],
     );
 
     // Ensure business status is active
