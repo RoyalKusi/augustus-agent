@@ -110,29 +110,36 @@ const start = async () => {
       }
 
       if (existsSync(businessDist)) {
-        // Serve the entire dist folder — static plugin handles all assets including index.html
+        const indexHtmlPath = join(businessDist, 'index.html');
+        const indexHtml = readFileSync(indexHtmlPath); // read once at startup
+
+        // Serve static assets (JS, CSS, images) — only exact file matches
         await app.register(staticPlugin, {
           root: businessDist,
           prefix: '/',
           decorateReply: false,
           wildcard: false,
-          index: 'index.html',
+          index: false,   // don't auto-serve index.html — we handle that below
           serve: true,
         });
 
-        const indexHtmlPath = join(businessDist, 'index.html');
-        const indexHtml = readFileSync(indexHtmlPath); // read once at startup
+        // SPA fallback: serve index.html for all browser navigations to non-API paths
+        // API paths are handled by their own registered routes above
+        const apiPrefixes = ['/auth/', '/dashboard/', '/whatsapp/', '/payments/', '/conversations/',
+          '/webhooks/', '/admin/', '/catalogue/', '/training/', '/subscription/', '/health', '/legal/'];
 
-        // SPA fallback: any unmatched GET that accepts HTML returns index.html
-        // This handles hard refreshes on SPA routes like /dashboard/conversations
         app.setNotFoundHandler((req, reply) => {
-          if (req.method === 'GET' && (req.headers['accept'] ?? '').includes('text/html')) {
-            reply.type('text/html').send(indexHtml);
-          } else if (req.method === 'GET') {
-            reply.type('text/html').send(indexHtml);
-          } else {
-            reply.status(404).send({ error: 'Not found' });
+          const path = req.url.split('?')[0];
+          const isApiPath = apiPrefixes.some(p => path.startsWith(p));
+          // For API paths that weren't matched, return JSON 404
+          if (isApiPath) {
+            return reply.status(404).send({ error: 'Not found' });
           }
+          // For all other GET requests (SPA routes), serve index.html
+          if (req.method === 'GET') {
+            return reply.type('text/html').send(indexHtml);
+          }
+          return reply.status(404).send({ error: 'Not found' });
         });
       }
     }
