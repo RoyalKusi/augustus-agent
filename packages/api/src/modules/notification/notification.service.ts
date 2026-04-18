@@ -54,6 +54,10 @@ async function sendViaSendGrid(
   };
 
   try {
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
     const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
@@ -61,14 +65,23 @@ async function sendViaSendGrid(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.error(`[Notification] SendGrid error ${res.status}: ${body}`);
+      throw new Error(`SendGrid API error: ${res.status}`);
     }
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.error('[Notification] SendGrid request timeout after 10 seconds');
+      throw new Error('Email service timeout');
+    }
     console.error('[Notification] SendGrid fetch failed:', err);
+    throw err;
   }
 }
 

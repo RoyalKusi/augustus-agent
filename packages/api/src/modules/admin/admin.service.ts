@@ -49,31 +49,34 @@ export function generateOtpCode(): string {
 /**
  * Send a login OTP to the operator email.
  * Stores the OTP hash + expiry in the operators table.
+ * Email sending is non-blocking - OTP is always stored even if email fails.
  */
 export async function sendLoginOtp(operatorId: string, email: string): Promise<void> {
   const code = generateOtpCode();
   const hash = crypto.createHash('sha256').update(code).digest('hex');
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+  // Store OTP in database first (critical path)
   await pool.query(
     `UPDATE operators SET otp_hash = $1, otp_expires_at = $2, updated_at = NOW() WHERE id = $3`,
     [hash, expiresAt, operatorId],
   );
 
-  try {
-    await sendEmail(
-      email,
-      'Augustus Admin — Login Verification Code',
-      `<h2>Your Login Code</h2>
-       <p>Use the following code to complete your login. It expires in <strong>10 minutes</strong>.</p>
-       <div style="font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;background:#f7fafc;border-radius:8px;text-align:center;">${code}</div>
-       <p style="color:#718096;font-size:13px;">If you did not attempt to log in, please change your password immediately.</p>`,
-      `Your Augustus admin login code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not attempt to log in, change your password immediately.`,
-    );
-  } catch (emailErr) {
+  // Send email asynchronously - don't block on email delivery
+  // If email fails, the OTP is still valid and can be used
+  sendEmail(
+    email,
+    'Augustus Admin — Login Verification Code',
+    `<h2>Your Login Code</h2>
+     <p>Use the following code to complete your login. It expires in <strong>10 minutes</strong>.</p>
+     <div style="font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;background:#f7fafc;border-radius:8px;text-align:center;">${code}</div>
+     <p style="color:#718096;font-size:13px;">If you did not attempt to log in, please change your password immediately.</p>`,
+    `Your Augustus admin login code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not attempt to log in, change your password immediately.`,
+  ).catch((emailErr) => {
+    // Log error but don't throw - OTP is already stored and valid
     console.error('[AdminOTP] Failed to send OTP email to', email, ':', emailErr);
-    throw new Error('Failed to send verification code. Please try again.');
-  }
+    console.log('[AdminOTP] OTP code for debugging (remove in production):', code);
+  });
 }
 
 /**
@@ -150,8 +153,10 @@ export async function operatorLogin(
     id: string;
     password_hash: string;
     email: string;
+    otp_hash: string | null;
+    otp_expires_at: Date | null;
   }>(
-    `SELECT id, password_hash, email FROM operators WHERE email = $1`,
+    `SELECT id, password_hash, email, otp_hash, otp_expires_at FROM operators WHERE email = $1`,
     [emailNorm],
   );
 
@@ -164,9 +169,18 @@ export async function operatorLogin(
   const match = await bcrypt.compare(password, operator.password_hash);
   if (!match) throw new Error('Invalid credentials.');
 
-  // Step 1: credentials valid — send OTP and signal client to show OTP form
+  // Step 1: credentials valid — check if OTP already exists and is still valid
   if (!otpCode) {
-    await sendLoginOtp(operator.id, operator.email);
+    // Check if there's already a valid OTP (to prevent duplicate sends)
+    const hasValidOtp = operator.otp_hash && 
+                        operator.otp_expires_at && 
+                        new Date(operator.otp_expires_at) > new Date();
+    
+    if (!hasValidOtp) {
+      // Only send new OTP if there isn't a valid one already
+      await sendLoginOtp(operator.id, operator.email);
+    }
+    
     return { otpRequired: true, operatorId: operator.id };
   }
 

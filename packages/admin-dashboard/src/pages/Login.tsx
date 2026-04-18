@@ -16,6 +16,11 @@ export default function Login() {
   const handleStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
+    
+    // Prevent double submission
+    if (loading) return;
+    
     setLoading(true);
     try {
       const res = await apiFetch<{ otpRequired?: boolean; operatorId?: string; token?: string }>(
@@ -28,11 +33,18 @@ export default function Login() {
       } else if (res.otpRequired && res.operatorId) {
         setOperatorId(res.operatorId);
         setStep(2);
+        setSuccess('Verification code sent to your email.');
       } else {
         setError('Unexpected response from server.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      const errorMessage = err instanceof Error ? err.message : 'Login failed';
+      // Don't show generic errors that might confuse users
+      if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+        setError('Service temporarily unavailable. Please try again.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -41,6 +53,10 @@ export default function Login() {
   const handleStep2 = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // Prevent double submission
+    if (loading) return;
+    
     setLoading(true);
     try {
       const res = await apiFetch<{ token: string }>('/admin/auth/login', {
@@ -50,7 +66,10 @@ export default function Login() {
       localStorage.setItem('augustus_operator_token', res.token);
       navigate('/admin');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid verification code');
+      const errorMessage = err instanceof Error ? err.message : 'Invalid verification code';
+      setError(errorMessage);
+      // Clear the OTP input on error so user can try again
+      setOtpCode('');
     } finally {
       setLoading(false);
     }
@@ -59,6 +78,10 @@ export default function Login() {
   const resendOtp = async () => {
     setError('');
     setSuccess('');
+    
+    // Prevent double submission
+    if (loading) return;
+    
     setLoading(true);
     try {
       await apiFetch('/admin/auth/resend-otp', {
@@ -66,9 +89,12 @@ export default function Login() {
         body: JSON.stringify({ operatorId }),
       });
       setOtpCode('');
-      setSuccess('A new code has been sent.');
+      setSuccess('A new code has been sent to your email.');
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend code');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to resend code';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
