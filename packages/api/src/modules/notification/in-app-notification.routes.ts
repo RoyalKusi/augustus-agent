@@ -4,7 +4,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '../auth/middleware.js';
+import { authenticate } from '../../auth/middleware.js';
 import { authenticateOperator } from '../admin/admin.middleware.js';
 import {
   createNotification,
