@@ -11,6 +11,7 @@ const navItems = [
   { to: '/admin/support', label: 'Support Tickets' },
   { to: '/admin/plan-management', label: 'Plan Management' },
   { to: '/admin/promo-codes', label: 'Promo Codes' },
+  { to: '/admin/referral-commission', label: 'Referral Commission' },
   { to: '/admin/api-keys', label: 'API Key Status' },
   { to: '/admin/notifications', label: 'Notifications' },
 ];
