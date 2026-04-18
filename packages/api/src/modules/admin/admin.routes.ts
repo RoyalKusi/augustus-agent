@@ -424,6 +424,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // ─── Referral Commission & Earnings ──────────────────────────────────────
+
+  // Import commission routes
+  const { commissionRoutes } = await import('../referral-earnings/commission.routes.js');
+  commissionRoutes(app);
+
   // ─── Mass Email ──────────────────────────────────────────────────────────
 
   // POST /admin/businesses/email-blast — send email to all or selected businesses

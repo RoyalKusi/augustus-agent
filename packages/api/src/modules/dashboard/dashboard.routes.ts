@@ -249,6 +249,36 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // GET /dashboard/referrals/earnings — get referral earnings for the logged-in business
+  app.get('/dashboard/referrals/earnings', { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { earningsService } = await import('../referral-earnings/earnings.service.js');
+      const earnings = await earningsService.getBusinessEarnings(request.businessId);
+
+      return reply.send({
+        totalEarningsUsd: earnings.totalEarningsUsd,
+        validReferralsCount: earnings.validReferralsCount,
+        referrals: earnings.referrals.map((ref) => ({
+          id: ref.id,
+          referredEmail: ref.referredEmail,
+          referredName: ref.referredName,
+          status: ref.status,
+          earningsUsd: ref.earningsUsd,
+          createdAt: ref.createdAt.toISOString(),
+          earningsCalculatedAt: ref.earningsCalculatedAt?.toISOString() || null,
+        })),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to get earnings';
+      
+      if (message === 'Business not found') {
+        return reply.status(404).send({ error: message });
+      }
+      
+      return reply.status(500).send({ error: message });
+    }
+  });
+
   // GET /dashboard/notification-number — get the business owner's notification WhatsApp number
   app.get('/dashboard/notification-number', { preHandler: authenticate }, async (request, reply) => {
     try {

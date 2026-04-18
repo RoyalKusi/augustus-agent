@@ -114,11 +114,35 @@ export async function activateSubscription(
       [businessId, cycleStart.toISOString().split('T')[0]],
     );
 
-    // Mark referral as subscribed if this business was referred
-    await client.query(
-      `UPDATE referrals SET status = 'subscribed' WHERE referred_id = $1 AND status = 'registered'`,
-      [businessId],
+    // Check if this business was referred and calculate earnings
+    const referralResult = await client.query<{ id: string; referrer_id: string }>(
+      `SELECT id, referrer_id FROM referrals 
+       WHERE referred_id = $1 AND status = 'registered'`,
+      [businessId]
     );
+
+    if (referralResult.rows.length > 0) {
+      const referral = referralResult.rows[0];
+      
+      // Calculate earnings using the earnings service
+      const { earningsService } = await import('../referral-earnings/earnings.service.js');
+      const earnings = await earningsService.calculateEarnings(
+        referral.id,
+        plan.priceUsd
+      );
+      
+      // Update referral status to 'subscribed'
+      await client.query(
+        `UPDATE referrals SET status = 'subscribed' WHERE id = $1`,
+        [referral.id]
+      );
+    } else {
+      // Mark referral as subscribed if this business was referred (fallback for existing code)
+      await client.query(
+        `UPDATE referrals SET status = 'subscribed' WHERE referred_id = $1 AND status = 'registered'`,
+        [businessId],
+      );
+    }
 
     await client.query('COMMIT');
     return rowToSubscription(result.rows[0]);
