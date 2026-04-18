@@ -501,12 +501,48 @@ export async function processInboundMessage(msg) {
     if (productRows.rows.length > 0) {
       // Sort products: cheapest first when price sensitivity detected, else by name
       const isPriceSensitive = intentResult.intent === 'price_question' || intentResult.intent === 'negotiation';
-      const sortedProducts = [...productRows.rows].sort((a, b) =>
+      let sortedProducts = [...productRows.rows].sort((a, b) =>
         isPriceSensitive ? Number(a.price) - Number(b.price) : a.name.localeCompare(b.name)
       );
 
+      // WhatsApp carousel requires at least 2 cards — pad with another in-stock
+      // product if Claude only triggered one, so we always use the carousel format
       if (sortedProducts.length === 1) {
-        // Single product — send image + quick reply button (more personal)
+        const existingId = sortedProducts[0].id;
+        const padResult = await pool.query(
+          `SELECT id, name, price, currency, image_urls, description
+           FROM products
+           WHERE business_id = $1 AND is_active = TRUE AND stock_quantity > 0 AND id != $2
+           ORDER BY name
+           LIMIT 1`,
+          [businessId, existingId]
+        );
+        if (padResult.rows.length > 0) {
+          // Pad to 2 cards so the native carousel can be used
+          sortedProducts = isPriceSensitive
+            ? [...sortedProducts, ...padResult.rows].sort((a, b) => Number(a.price) - Number(b.price))
+            : [...sortedProducts, ...padResult.rows];
+        }
+      }
+
+      if (sortedProducts.length >= 2) {
+        // Native horizontally scrollable carousel (2–10 cards)
+        const carouselProducts = sortedProducts.slice(0, 10).map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          currency: p.currency,
+          imageUrl: p.image_urls?.[0] ?? undefined,
+          description: p.description ? String(p.description).slice(0, 60) : undefined,
+        }));
+        await sendMessage(businessId, {
+          type: 'carousel',
+          to: customerWaNumber,
+          products: carouselProducts,
+        });
+      } else {
+        // Truly only 1 product in the entire catalogue — image + quick reply
+        // (WhatsApp API rejects single-card carousels)
         const p = sortedProducts[0];
         const imageUrl = p.image_urls?.[0];
         const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
@@ -520,21 +556,6 @@ export async function processInboundMessage(msg) {
           to: customerWaNumber,
           body: `Would you like to order ${p.name}?`,
           buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
-        });
-      } else {
-        // Multiple products — send native horizontally scrollable carousel
-        const carouselProducts = sortedProducts.map((p) => ({
-          id: p.id,
-          name: p.name,
-          price: Number(p.price),
-          currency: p.currency,
-          imageUrl: p.image_urls?.[0] ?? undefined,
-          description: p.description ? String(p.description).slice(0, 60) : undefined,
-        }));
-        await sendMessage(businessId, {
-          type: 'carousel',
-          to: customerWaNumber,
-          products: carouselProducts,
         });
       }
     }
