@@ -365,12 +365,16 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             const { sendTypingIndicator } = await import('../whatsapp/message-dispatcher.js');
             void sendTypingIndicator(businessId, messageId);
           }
+          // Extract customer name from WhatsApp contacts array if available
+          const contacts = (payload as any)?.entry?.[0]?.changes?.[0]?.value?.contacts;
+          const customerName = contacts?.[0]?.profile?.name ?? '';
           await processInboundMessage({
             businessId,
             customerWaNumber: message.from ?? '',
             messageText,
             messageId: message.id ?? '',
             timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
+            customerName,
           });
           app.log.info({ businessId, messageId }, '[Webhook] Message processed successfully');
         } catch (err) {

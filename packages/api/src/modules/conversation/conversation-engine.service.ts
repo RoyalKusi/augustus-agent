@@ -2,7 +2,7 @@
 // @ts-nocheck — this file uses dynamic patterns; types are validated at runtime
 // ── Context window constants ──────────────────────────────────────────────────
 // Full messages kept as live context for Claude
-export const LIVE_CONTEXT_MESSAGES = 8;
+export const LIVE_CONTEXT_MESSAGES = 14;
 // After this many messages, proactively summarise older history
 export const SUMMARISE_AFTER_MESSAGES = 10;
 // Hard session reset threshold
@@ -124,7 +124,7 @@ export async function isBudgetAllowed(businessId) {
   return status.allowed;
 }
 
-export function buildSystemPrompt(trainingData, products, detectedLanguage, contextSummary, inChatPaymentsEnabled = true, intentInstruction = '', timeSinceLastMessageMs = 0) {
+export function buildSystemPrompt(trainingData, products, detectedLanguage, contextSummary, inChatPaymentsEnabled = true, intentInstruction = '', timeSinceLastMessageMs = 0, customerName = '') {
   const parts = [];
 
   parts.push(
@@ -140,15 +140,21 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
     '- If the customer says "ok", "thanks", "got it" or similar — just respond naturally, do not resend anything'
   );
 
+  if (customerName) {
+    parts.push('## Customer\nCustomer name: ' + customerName + '. Use their name naturally in conversation — not on every message, but occasionally to personalise the interaction.');
+  }
+
   if (trainingData) {
     if (trainingData.business_description) parts.push('## About the Brand\n' + trainingData.business_description);
     if (trainingData.tone_guidelines) parts.push('## Tone\n' + trainingData.tone_guidelines);
     if (trainingData.faqs) parts.push('## FAQs\n' + trainingData.faqs);
+  } else {
+    parts.push('## About the Brand\nYou are a helpful sales assistant. Be friendly, concise, and professional. Ask the customer what they are looking for and help them find the right product.');
   }
 
   if (products.length > 0) {
     const productList = products.map((p) =>
-      `${p.name} | ID: ${p.id} | ${p.currency} ${Number(p.price).toFixed(2)}${p.description ? ' | ' + p.description.slice(0, 80) : ''}`
+      `${p.name} | ID: ${p.id} | ${p.currency} ${Number(p.price).toFixed(2)}${p.category ? ' | ' + p.category : ''}${p.stock_quantity ? ' | Stock: ' + p.stock_quantity : ''}${p.description ? ' | ' + p.description.slice(0, 200) : ''}`
     ).join('\n');
     parts.push('## Products in Stock\n' + productList);
   }
@@ -338,7 +344,7 @@ async function getBusinessEmail(businessId) {
 }
 
 export async function processInboundMessage(msg) {
-  const { businessId, customerWaNumber, messageText, messageId, timestamp } = msg;
+  const { businessId, customerWaNumber, messageText, messageId, timestamp, customerName } = msg;
   const conversation = await getOrCreateConversation(businessId, customerWaNumber);
   const conversationId = conversation.id;
 
@@ -382,7 +388,7 @@ export async function processInboundMessage(msg) {
   }
 
   // Load context and all business data in parallel
-  const [contextMessages, trainingData, products, settingsResult, updatedConv] = await Promise.all([
+  const [contextMessages, trainingData, products, settingsResult, updatedConv, pastSessionsResult] = await Promise.all([
     loadConversationContext(conversationId, timestamp),
     loadTrainingData(businessId),
     loadInStockProducts(businessId),
@@ -391,11 +397,19 @@ export async function processInboundMessage(msg) {
       [businessId]
     ),
     pool.query('SELECT context_summary FROM conversations WHERE id = $1', [conversationId]),
+    pool.query(`SELECT context_summary, session_started_at FROM conversations WHERE business_id = $1 AND customer_wa_number = $2 AND context_summary IS NOT NULL AND id != $3 ORDER BY session_started_at DESC LIMIT 3`, [businessId, customerWaNumber, conversationId]),
   ]);
   const language = detectLanguage(messageText);
   const paymentSettings = settingsResult.rows[0];
   const inChatPaymentsEnabled = paymentSettings?.in_chat_payments_enabled ?? true;
-  const contextSummary = updatedConv.rows[0]?.context_summary || null;
+  const currentSummary = updatedConv.rows[0]?.context_summary || null;
+  const pastSummaries = (pastSessionsResult?.rows ?? [])
+    .map((r, i) => r.context_summary ? `Session ${i + 1} ago: ${r.context_summary}` : null)
+    .filter(Boolean);
+  const contextSummary = [
+    ...(pastSummaries.length > 0 ? [`## Past Conversations (most recent first)\n${pastSummaries.join('\n')}`] : []),
+    ...(currentSummary ? [currentSummary] : []),
+  ].join('\n\n') || null;
 
   // Calculate time since last message for context-aware responses
   const lastMessageResult = await pool.query(
@@ -409,7 +423,7 @@ export async function processInboundMessage(msg) {
 
   // Detect intent with time gap awareness
   const intentResult = detectIntent(messageText, timeSinceLastMessageMs);
-  const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction, timeSinceLastMessageMs);
+  const systemPrompt = buildSystemPrompt(trainingData, products, language, contextSummary, inChatPaymentsEnabled, intentResult.instruction, timeSinceLastMessageMs, customerName ?? '');
 
   // Auto-label lead warmth based on intent — only upgrade, never downgrade
   // Priority: hot > warm > browsing > cold (unlabelled treated as lowest)
@@ -447,7 +461,7 @@ export async function processInboundMessage(msg) {
   })();
 
   // Use higher token limit for payment/order intents so PAYMENT_TRIGGER JSON doesn't get cut off
-  const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 600 : 300;
+  const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 800 : 500;
 
   let claudeResponse;
   try {
@@ -481,7 +495,12 @@ export async function processInboundMessage(msg) {
       [action.products, businessId]
     );
     if (productRows.rows.length > 0) {
-      for (const p of productRows.rows) {
+      // Sort products: cheapest first when price sensitivity detected, else by name
+      const isPriceSensitive = intentResult.intent === 'price_question' || intentResult.intent === 'negotiation';
+      const sortedProducts = [...productRows.rows].sort((a, b) =>
+        isPriceSensitive ? Number(a.price) - Number(b.price) : a.name.localeCompare(b.name)
+      );
+      for (const p of sortedProducts) {
         const imageUrl = p.image_urls?.[0];
         const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
         if (imageUrl) {
