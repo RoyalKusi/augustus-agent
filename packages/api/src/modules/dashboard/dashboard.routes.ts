@@ -77,9 +77,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/dashboard/conversations/:id/messages', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      // Fetch messages directly by conversation_id
-      // Security: the conversation list endpoint already filters by business_id,
-      // so the client only knows IDs of their own conversations
+      // Fetch latest 200 messages — ORDER DESC to get most recent, then reverse for chronological display
       const result = await pool.query<{
         id: string;
         direction: string;
@@ -90,14 +88,15 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
          FROM messages m
          INNER JOIN conversations c ON c.id = m.conversation_id
          WHERE m.conversation_id = $1 AND c.business_id = $2
-         ORDER BY m.created_at ASC
+         ORDER BY m.created_at DESC
          LIMIT 200`,
         [id, request.businessId],
       );
 
       app.log.info({ conversationId: id, businessId: request.businessId, count: result.rows.length }, '[Dashboard] Messages fetched');
 
-      const messages = result.rows.map((r) => ({
+      // Reverse to get chronological order (oldest first)
+      const messages = result.rows.reverse().map((r) => ({
         id: r.id,
         direction: r.direction,
         content: r.content,

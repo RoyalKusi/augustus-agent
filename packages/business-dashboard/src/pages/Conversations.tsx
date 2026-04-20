@@ -72,15 +72,12 @@ export default function Conversations() {
     try {
       const data = await api<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
       const msgs = data.messages ?? [];
-      setConvMessages(prev => {
-        const old = prev[convId];
-        const isNew = !old || msgs.length > old.length;
-        if (isNew) setTimeout(() => {
-          const el = threadRefs.current[convId];
-          if (el) el.scrollTop = el.scrollHeight;
-        }, 50);
-        return { ...prev, [convId]: msgs };
-      });
+      setConvMessages(prev => ({ ...prev, [convId]: msgs }));
+      // Always scroll to bottom after loading
+      setTimeout(() => {
+        const el = threadRefs.current[convId];
+        if (el) el.scrollTop = el.scrollHeight;
+      }, 50);
     } catch (e) {
       console.error('loadMsgs error', convId, e);
     }
