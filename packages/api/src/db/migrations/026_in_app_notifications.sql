@@ -33,6 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread
   WHERE is_read = FALSE;
 
 -- Partial index for cleanup job optimization
-CREATE INDEX IF NOT EXISTS idx_notifications_cleanup 
-  ON notifications(created_at) 
-  WHERE created_at < NOW() - INTERVAL '90 days';
+-- Note: Cannot use NOW() in index predicate as it's not immutable
+-- Cleanup job will use created_at index directly
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at 
+  ON notifications(created_at);
