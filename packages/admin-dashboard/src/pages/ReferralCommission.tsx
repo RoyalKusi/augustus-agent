@@ -21,63 +21,27 @@ export default function ReferralCommission() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  // Form state
   const [commissionPercentage, setCommissionPercentage] = useState<number>(10);
   const [earningsPeriodMonths, setEarningsPeriodMonths] = useState<number>(12);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
-
     try {
       const token = localStorage.getItem('operatorToken');
-      if (!token) {
-        setError('Authentication required');
-        return;
-      }
-
-      // Fetch settings
-      const settingsResponse = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!settingsResponse.ok) {
-        throw new Error('Failed to fetch settings');
-      }
-
-      const settingsData = await settingsResponse.json();
+      if (!token) { setError('Authentication required'); return; }
+      const settingsRes = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!settingsRes.ok) throw new Error('Failed to fetch settings');
+      const settingsData = await settingsRes.json();
       setSettings(settingsData);
       setCommissionPercentage(settingsData.commissionPercentage);
       setEarningsPeriodMonths(settingsData.earningsPeriodMonths);
-
-      // Fetch stats
-      const statsResponse = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/referral-commission/system-stats`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!statsResponse.ok) {
-        throw new Error('Failed to fetch statistics');
-      }
-
-      const statsData = await statsResponse.json();
-      setStats(statsData);
+      const statsRes = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/system-stats`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!statsRes.ok) throw new Error('Failed to fetch statistics');
+      setStats(await statsRes.json());
     } catch (err) {
-      console.error('Failed to fetch data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
@@ -85,251 +49,145 @@ export default function ReferralCommission() {
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-
+    setSaving(true); setError(null); setSuccess(null);
     try {
       const token = localStorage.getItem('operatorToken');
-      if (!token) {
-        setError('Authentication required');
-        return;
-      }
-
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            commissionPercentage,
-            earningsPeriodMonths,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update settings');
-      }
-
-      const updatedSettings = await response.json();
-      setSettings(updatedSettings);
+      if (!token) { setError('Authentication required'); return; }
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commissionPercentage, earningsPeriodMonths }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to update settings'); }
+      setSettings(await res.json());
       setSuccess('Settings updated successfully!');
-
-      // Clear success message after 5 seconds
       setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
-      console.error('Failed to save settings:', err);
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
   };
 
-  const hasChanges =
-    settings &&
-    (commissionPercentage !== settings.commissionPercentage ||
-      earningsPeriodMonths !== settings.earningsPeriodMonths);
+  const hasChanges = settings && (commissionPercentage !== settings.commissionPercentage || earningsPeriodMonths !== settings.earningsPeriodMonths);
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-        <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-600 absolute top-0 left-0"></div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', background: 'linear-gradient(135deg, #eff6ff, #eef2ff, #f5f3ff)' }}>
+        <div style={{ position: 'relative', width: 64, height: 64 }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '4px solid #bfdbfe', animation: 'spin 1s linear infinite' }} />
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '4px solid transparent', borderTopColor: '#2563eb', animation: 'spin 1s linear infinite' }} />
         </div>
-        <p className="mt-4 text-gray-600 font-medium">Loading commission settings...</p>
+        <p style={{ marginTop: 16, color: '#4b5563', fontWeight: 600 }}>Loading commission settings...</p>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Header with Gradient Background */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-3xl shadow-2xl p-8">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full -mr-32 -mt-32"></div>
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-10 rounded-full -ml-24 -mb-24"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-4 mb-3">
-              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold text-white">Referral Commission Settings</h1>
-                <p className="text-blue-100 mt-1 text-lg">
-                  Configure and manage your referral program rewards
-                </p>
-              </div>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc, #eff6ff, #eef2ff)', padding: '24px' }}>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.12) !important; }
+        .stat-icon { transition: transform 0.2s; }
+        .stat-card:hover .stat-icon { transform: scale(1.1); }
+        .save-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(37,99,235,0.4) !important; }
+        .reset-btn:hover { background: #e5e7eb !important; }
+        .input-field:focus { outline: none; border-color: #3b82f6 !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.1); }
+      `}</style>
+
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        {/* Hero Header */}
+        <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #2563eb, #4f46e5, #7c3aed)', borderRadius: 24, padding: '40px 48px', marginBottom: 24, boxShadow: '0 20px 60px rgba(37,99,235,0.35)' }}>
+          <div style={{ position: 'absolute', top: -80, right: -80, width: 256, height: 256, background: 'rgba(255,255,255,0.08)', borderRadius: '50%' }} />
+          <div style={{ position: 'absolute', bottom: -60, left: -60, width: 192, height: 192, background: 'rgba(255,255,255,0.08)', borderRadius: '50%' }} />
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 20 }}>
+            <div style={{ padding: 14, background: 'rgba(255,255,255,0.2)', borderRadius: 18, backdropFilter: 'blur(8px)' }}>
+              <Sparkles size={32} color="#fff" />
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>Referral Commission Settings</h1>
+              <p style={{ margin: '6px 0 0', fontSize: 16, color: 'rgba(255,255,255,0.8)' }}>Configure and manage your referral program rewards</p>
             </div>
           </div>
         </div>
 
-        {/* Alert Messages */}
+        {/* Alerts */}
         {error && (
-          <div className="bg-white border-l-4 border-red-500 rounded-2xl p-5 flex items-start gap-4 shadow-lg">
-            <div className="p-2 bg-red-100 rounded-xl">
-              <XCircle className="w-6 h-6 text-red-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-bold text-red-900 text-lg">Error</h3>
-              <p className="text-red-700 mt-1">{error}</p>
-            </div>
+          <div style={{ background: '#fff', borderLeft: '4px solid #ef4444', borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
+            <div style={{ padding: 8, background: '#fee2e2', borderRadius: 12 }}><XCircle size={22} color="#dc2626" /></div>
+            <div><h3 style={{ margin: 0, fontWeight: 700, color: '#7f1d1d', fontSize: 16 }}>Error</h3><p style={{ margin: '4px 0 0', color: '#b91c1c' }}>{error}</p></div>
           </div>
         )}
-
         {success && (
-          <div className="bg-white border-l-4 border-green-500 rounded-2xl p-5 flex items-start gap-4 shadow-lg">
-            <div className="p-2 bg-green-100 rounded-xl">
-              <CheckCircle2 className="w-6 h-6 text-green-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-bold text-green-900 text-lg">Success</h3>
-              <p className="text-green-700 mt-1">{success}</p>
-            </div>
+          <div style={{ background: '#fff', borderLeft: '4px solid #22c55e', borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
+            <div style={{ padding: 8, background: '#dcfce7', borderRadius: 12 }}><CheckCircle2 size={22} color="#16a34a" /></div>
+            <div><h3 style={{ margin: 0, fontWeight: 700, color: '#14532d', fontSize: 16 }}>Success</h3><p style={{ margin: '4px 0 0', color: '#15803d' }}>{success}</p></div>
           </div>
         )}
 
-        {/* Statistics Cards with Enhanced Design */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Total Earnings Card */}
-          <div className="group relative bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-blue-100">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-blue-600/5 rounded-3xl"></div>
-            <div className="relative">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
-                  <DollarSign className="w-7 h-7 text-white" />
-                </div>
-                <div className="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                  USD
-                </div>
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 24 }}>
+          {[
+            { label: 'Total Earnings', value: `$${stats?.totalEarningsUsd.toFixed(2) ?? '0.00'}`, sub: 'System-wide referral earnings', badge: 'USD', icon: <DollarSign size={28} color="#fff" />, grad: 'linear-gradient(135deg,#3b82f6,#2563eb)', border: '#dbeafe', badgeColor: '#1d4ed8', badgeBg: '#eff6ff' },
+            { label: 'Valid Referrals', value: String(stats?.totalValidReferrals ?? 0), sub: 'Referrals earning commissions', badge: 'Active', icon: <Users size={28} color="#fff" />, grad: 'linear-gradient(135deg,#22c55e,#16a34a)', border: '#dcfce7', badgeColor: '#15803d', badgeBg: '#f0fdf4' },
+            { label: 'Subscribed', value: String(stats?.totalSubscribedReferrals ?? 0), sub: 'Active subscriptions', badge: 'Growth', icon: <TrendingUp size={28} color="#fff" />, grad: 'linear-gradient(135deg,#a855f7,#7c3aed)', border: '#f3e8ff', badgeColor: '#6d28d9', badgeBg: '#faf5ff' },
+            { label: 'Per Referral', value: `$${stats?.averageEarningsPerReferral.toFixed(2) ?? '0.00'}`, sub: 'Average earnings', badge: 'Avg', icon: <TrendingUp size={28} color="#fff" />, grad: 'linear-gradient(135deg,#f97316,#ea580c)', border: '#ffedd5', badgeColor: '#c2410c', badgeBg: '#fff7ed' },
+          ].map((card) => (
+            <div key={card.label} className="stat-card" style={{ background: '#fff', borderRadius: 24, padding: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', border: `1px solid ${card.border}`, transition: 'all 0.25s', cursor: 'default' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div className="stat-icon" style={{ padding: 16, background: card.grad, borderRadius: 18, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{card.icon}</div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: card.badgeColor, background: card.badgeBg, padding: '4px 12px', borderRadius: 20 }}>{card.badge}</span>
               </div>
-              <h3 className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Total Earnings</h3>
-              <p className="text-4xl font-black text-gray-900 mb-2">
-                ${stats?.totalEarningsUsd.toFixed(2) || '0.00'}
-              </p>
-              <p className="text-sm text-gray-600">System-wide referral earnings</p>
+              <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{card.label}</p>
+              <p style={{ margin: '0 0 6px', fontSize: 36, fontWeight: 900, color: '#111827', lineHeight: 1 }}>{card.value}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{card.sub}</p>
             </div>
-          </div>
-
-          {/* Valid Referrals Card */}
-          <div className="group relative bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-green-100">
-            <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-green-600/5 rounded-3xl"></div>
-            <div className="relative">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-4 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
-                  <Users className="w-7 h-7 text-white" />
-                </div>
-                <div className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                  Active
-                </div>
-              </div>
-              <h3 className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Valid Referrals</h3>
-              <p className="text-4xl font-black text-gray-900 mb-2">
-                {stats?.totalValidReferrals || 0}
-              </p>
-              <p className="text-sm text-gray-600">Referrals earning commissions</p>
-            </div>
-          </div>
-
-          {/* Subscribed Referrals Card */}
-          <div className="group relative bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-purple-100">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 rounded-3xl"></div>
-            <div className="relative">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-4 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
-                  <TrendingUp className="w-7 h-7 text-white" />
-                </div>
-                <div className="text-xs font-semibold text-purple-600 bg-purple-50 px-3 py-1 rounded-full">
-                  Growth
-                </div>
-              </div>
-              <h3 className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Subscribed</h3>
-              <p className="text-4xl font-black text-gray-900 mb-2">
-                {stats?.totalSubscribedReferrals || 0}
-              </p>
-              <p className="text-sm text-gray-600">Active subscriptions</p>
-            </div>
-          </div>
-
-          {/* Average per Referral Card */}
-          <div className="group relative bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-orange-100">
-            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-orange-600/5 rounded-3xl"></div>
-            <div className="relative">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-4 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
-                  <TrendingUp className="w-7 h-7 text-white" />
-                </div>
-                <div className="text-xs font-semibold text-orange-600 bg-orange-50 px-3 py-1 rounded-full">
-                  Avg
-                </div>
-              </div>
-              <h3 className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Per Referral</h3>
-              <p className="text-4xl font-black text-gray-900 mb-2">
-                ${stats?.averageEarningsPerReferral.toFixed(2) || '0.00'}
-              </p>
-              <p className="text-sm text-gray-600">Average earnings</p>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Settings Form with Modern Design */}
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-8 py-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-xl">
-                <Settings className="w-6 h-6 text-white" />
-              </div>
+        {/* Settings Form */}
+        <div style={{ background: '#fff', borderRadius: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 24 }}>
+          <div style={{ background: 'linear-gradient(135deg, #2563eb, #4f46e5, #7c3aed)', padding: '28px 36px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ padding: 10, background: 'rgba(255,255,255,0.2)', borderRadius: 14 }}><Settings size={24} color="#fff" /></div>
               <div>
-                <h2 className="text-2xl font-bold text-white">Commission Configuration</h2>
-                <p className="text-blue-100 text-sm mt-0.5">Adjust rates and periods for your referral program</p>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>Commission Configuration</h2>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>Adjust rates and periods for your referral program</p>
               </div>
             </div>
           </div>
 
-          <div className="p-8 space-y-8">
-            {/* Commission Percentage */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+          <div style={{ padding: '36px' }}>
+            {/* Commission % */}
+            <div style={{ marginBottom: 36 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <label style={{ fontSize: 15, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 8, height: 8, background: '#2563eb', borderRadius: '50%', display: 'inline-block' }} />
                   Commission Percentage
                 </label>
-                <span className="text-sm text-gray-500 font-medium">0-100%</span>
+                <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>0–100%</span>
               </div>
-              <div className="relative group">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={commissionPercentage}
+              <div style={{ position: 'relative' }}>
+                <input type="number" min="0" max="100" step="0.1" value={commissionPercentage}
                   onChange={(e) => setCommissionPercentage(parseFloat(e.target.value) || 0)}
-                  className="w-full px-6 py-5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 text-2xl font-bold transition-all group-hover:border-gray-300"
-                  placeholder="10.0"
+                  className="input-field"
+                  style={{ width: '100%', padding: '18px 60px 18px 20px', border: '2px solid #e5e7eb', borderRadius: 16, fontSize: 24, fontWeight: 700, boxSizing: 'border-box', transition: 'border-color 0.2s' }}
                 />
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <span className="text-2xl font-black text-gray-400">%</span>
-                </div>
+                <span style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', fontSize: 22, fontWeight: 800, color: '#9ca3af' }}>%</span>
               </div>
-              <p className="text-sm text-gray-600 flex items-start gap-2">
-                <Info className="w-4 h-4 mt-0.5 text-gray-400" />
-                <span>Percentage of subscription payments earned as commission</span>
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Info size={14} color="#9ca3af" /> Percentage of subscription payments earned as commission
               </p>
-              <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-100">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-blue-600 rounded-lg">
-                    <Sparkles className="w-4 h-4 text-white" />
-                  </div>
+              <div style={{ marginTop: 14, padding: '18px 20px', background: 'linear-gradient(135deg, #eff6ff, #eef2ff)', borderRadius: 16, border: '2px solid #bfdbfe' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ padding: 8, background: '#2563eb', borderRadius: 10 }}><Sparkles size={16} color="#fff" /></div>
                   <div>
-                    <p className="text-sm font-semibold text-blue-900 mb-1">Example Calculation</p>
-                    <p className="text-sm text-blue-800">
-                      With <span className="font-bold">{commissionPercentage}%</span> commission, a <span className="font-bold">$100</span> subscription payment earns{' '}
-                      <span className="font-bold text-blue-600">${(commissionPercentage * 1).toFixed(2)}</span> in referral commission.
+                    <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#1e3a8a' }}>Example Calculation</p>
+                    <p style={{ margin: 0, fontSize: 13, color: '#1d4ed8' }}>
+                      With <strong>{commissionPercentage}%</strong> commission, a <strong>$100</strong> subscription earns{' '}
+                      <strong style={{ color: '#1d4ed8' }}>${(commissionPercentage * 1).toFixed(2)}</strong> in referral commission.
                     </p>
                   </div>
                 </div>
@@ -337,96 +195,62 @@ export default function ReferralCommission() {
             </div>
 
             {/* Earnings Period */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                  <Calendar className="w-5 h-5 text-purple-600" />
+            <div style={{ marginBottom: 36 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <label style={{ fontSize: 15, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 8, height: 8, background: '#7c3aed', borderRadius: '50%', display: 'inline-block' }} />
+                  <Calendar size={18} color="#7c3aed" />
                   Earnings Period
                 </label>
-                <span className="text-sm text-gray-500 font-medium">1-60 months</span>
+                <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>1–60 months</span>
               </div>
-              <div className="relative group">
-                <input
-                  type="number"
-                  min="1"
-                  max="60"
-                  step="1"
-                  value={earningsPeriodMonths}
+              <div style={{ position: 'relative' }}>
+                <input type="number" min="1" max="60" step="1" value={earningsPeriodMonths}
                   onChange={(e) => setEarningsPeriodMonths(parseInt(e.target.value) || 1)}
-                  className="w-full px-6 py-5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-purple-100 focus:border-purple-500 text-2xl font-bold transition-all group-hover:border-gray-300"
-                  placeholder="12"
+                  className="input-field"
+                  style={{ width: '100%', padding: '18px 100px 18px 20px', border: '2px solid #e5e7eb', borderRadius: 16, fontSize: 24, fontWeight: 700, boxSizing: 'border-box', transition: 'border-color 0.2s' }}
                 />
-                <div className="absolute right-6 top-1/2 -translate-y-1/2">
-                  <span className="text-lg font-bold text-gray-400">months</span>
-                </div>
+                <span style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', fontSize: 15, fontWeight: 700, color: '#9ca3af' }}>months</span>
               </div>
-              <p className="text-sm text-gray-600 flex items-start gap-2">
-                <Info className="w-4 h-4 mt-0.5 text-gray-400" />
-                <span>Duration for which referrers earn commissions from referred businesses</span>
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Info size={14} color="#9ca3af" /> Duration for which referrers earn commissions from referred businesses
               </p>
-              <div className="p-5 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl border-2 border-purple-100">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <Calendar className="w-4 h-4 text-white" />
-                  </div>
+              <div style={{ marginTop: 14, padding: '18px 20px', background: 'linear-gradient(135deg, #faf5ff, #fdf2f8)', borderRadius: 16, border: '2px solid #e9d5ff' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ padding: 8, background: '#7c3aed', borderRadius: 10 }}><Calendar size={16} color="#fff" /></div>
                   <div>
-                    <p className="text-sm font-semibold text-purple-900 mb-1">Example Timeline</p>
-                    <p className="text-sm text-purple-800">
-                      With <span className="font-bold">{earningsPeriodMonths} {earningsPeriodMonths === 1 ? 'month' : 'months'}</span>, referrers earn commissions on all subscription payments made by their referrals for the entire duration after registration.
+                    <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#4c1d95' }}>Example Timeline</p>
+                    <p style={{ margin: 0, fontSize: 13, color: '#6d28d9' }}>
+                      With <strong>{earningsPeriodMonths} {earningsPeriodMonths === 1 ? 'month' : 'months'}</strong>, referrers earn commissions on all subscription payments for the entire duration after registration.
                     </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Last Updated */}
             {settings && (
-              <div className="pt-6 border-t-2 border-gray-100">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="font-semibold text-gray-700">Last updated:</span>
-                  </div>
-                  <span className="text-gray-600">{new Date(settings.updatedAt).toLocaleString()}</span>
+              <div style={{ paddingTop: 24, borderTop: '2px solid #f3f4f6', marginBottom: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                  <span style={{ width: 8, height: 8, background: '#22c55e', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+                  <span style={{ fontWeight: 700, color: '#374151' }}>Last updated:</span>
+                  <span style={{ color: '#6b7280' }}>{new Date(settings.updatedAt).toLocaleString()}</span>
                 </div>
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-4 pt-6">
-              <button
-                onClick={handleSave}
-                disabled={!hasChanges || saving}
-                className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-bold transition-all text-base shadow-lg ${
-                  hasChanges && !saving
-                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white hover:shadow-2xl transform hover:-translate-y-1 hover:scale-105'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
-              >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
+              <button onClick={handleSave} disabled={!hasChanges || saving} className="save-btn"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 28px', borderRadius: 16, fontWeight: 700, fontSize: 15, border: 'none', cursor: hasChanges && !saving ? 'pointer' : 'not-allowed', background: hasChanges && !saving ? 'linear-gradient(135deg, #2563eb, #4f46e5, #7c3aed)' : '#e5e7eb', color: hasChanges && !saving ? '#fff' : '#9ca3af', boxShadow: hasChanges && !saving ? '0 4px 16px rgba(37,99,235,0.3)' : 'none', transition: 'all 0.2s' }}>
                 {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                    Saving Changes...
-                  </>
+                  <><div style={{ width: 20, height: 20, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />Saving...</>
                 ) : (
-                  <>
-                    <Save className="w-5 h-5" />
-                    Save Changes
-                  </>
+                  <><Save size={18} />Save Changes</>
                 )}
               </button>
-
               {hasChanges && !saving && (
-                <button
-                  onClick={() => {
-                    if (settings) {
-                      setCommissionPercentage(settings.commissionPercentage);
-                      setEarningsPeriodMonths(settings.earningsPeriodMonths);
-                    }
-                  }}
-                  className="px-8 py-4 rounded-2xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all border-2 border-gray-300 hover:border-gray-400"
-                >
+                <button onClick={() => { if (settings) { setCommissionPercentage(settings.commissionPercentage); setEarningsPeriodMonths(settings.earningsPeriodMonths); } }}
+                  className="reset-btn"
+                  style={{ padding: '14px 28px', borderRadius: 16, fontWeight: 700, fontSize: 15, border: '2px solid #d1d5db', background: '#f9fafb', color: '#374151', cursor: 'pointer', transition: 'background 0.2s' }}>
                   Reset Changes
                 </button>
               )}
@@ -434,62 +258,31 @@ export default function ReferralCommission() {
           </div>
         </div>
 
-        {/* Info Panel with Modern Design */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl p-8 shadow-2xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full -mr-32 -mt-32"></div>
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-10 rounded-full -ml-24 -mb-24"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl">
-                <AlertCircle className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-white">How Referral Commissions Work</h3>
+        {/* Info Panel */}
+        <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899)', borderRadius: 24, padding: '40px 48px', boxShadow: '0 20px 60px rgba(99,102,241,0.35)' }}>
+          <div style={{ position: 'absolute', top: -60, right: -60, width: 192, height: 192, background: 'rgba(255,255,255,0.08)', borderRadius: '50%' }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+              <div style={{ padding: 12, background: 'rgba(255,255,255,0.2)', borderRadius: 16 }}><AlertCircle size={24} color="#fff" /></div>
+              <h3 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>How Referral Commissions Work</h3>
             </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white/20 rounded-lg">
-                    <DollarSign className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white mb-1">Commission Rate</h4>
-                    <p className="text-sm text-white/90">Referrers earn a percentage of every subscription payment made by businesses they refer.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white/20 rounded-lg">
-                    <Calendar className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white mb-1">Earnings Period</h4>
-                    <p className="text-sm text-white/90">Commissions are earned for a specified duration after the referred business registers.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              {[
+                { icon: <DollarSign size={20} color="#fff" />, title: 'Commission Rate', desc: 'Referrers earn a percentage of every subscription payment made by businesses they refer.' },
+                { icon: <Calendar size={20} color="#fff" />, title: 'Earnings Period', desc: 'Commissions are earned for a specified duration after the referred business registers.' },
+                { icon: <Sparkles size={20} color="#fff" />, title: 'Automatic Calculation', desc: 'Earnings are calculated automatically when referred businesses make subscription payments.' },
+                { icon: <Users size={20} color="#fff" />, title: 'Wallet Credit', desc: "Commissions are credited to the referrer's wallet and can be withdrawn or used for payments." },
+              ].map((item) => (
+                <div key={item.title} style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', borderRadius: 18, padding: '20px 22px', border: '1px solid rgba(255,255,255,0.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ padding: 8, background: 'rgba(255,255,255,0.2)', borderRadius: 10, flexShrink: 0 }}>{item.icon}</div>
+                    <div>
+                      <h4 style={{ margin: '0 0 6px', fontWeight: 700, color: '#fff', fontSize: 14 }}>{item.title}</h4>
+                      <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{item.desc}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white/20 rounded-lg">
-                    <Sparkles className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white mb-1">Automatic Calculation</h4>
-                    <p className="text-sm text-white/90">Earnings are calculated automatically when referred businesses make subscription payments.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white/20 rounded-lg">
-                    <Users className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white mb-1">Wallet Credit</h4>
-                    <p className="text-sm text-white/90">Commissions are credited to the referrer's wallet and can be withdrawn or used for payments.</p>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>

@@ -19,45 +19,21 @@ export function NotificationHistory() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
-  useEffect(() => {
-    fetchNotifications(0);
-  }, [filter, typeFilter]);
+  useEffect(() => { fetchNotifications(0); }, [filter, typeFilter]);
 
   const fetchNotifications = async (currentOffset: number) => {
     setLoading(true);
     try {
       const token = localStorage.getItem('operatorToken');
       if (!token) return;
-
-      const params = new URLSearchParams({
-        limit: '20',
-        offset: currentOffset.toString(),
-      });
-
-      if (filter === 'unread') {
-        params.append('unread', 'true');
-      }
-
-      if (typeFilter !== 'all') {
-        params.append('type', typeFilter);
-      }
-
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/notifications?${params}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (currentOffset === 0) {
-          setNotifications(data.notifications || []);
-        } else {
-          setNotifications(prev => [...prev, ...(data.notifications || [])]);
-        }
+      const params = new URLSearchParams({ limit: '20', offset: currentOffset.toString() });
+      if (filter === 'unread') params.append('unread', 'true');
+      if (typeFilter !== 'all') params.append('type', typeFilter);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        if (currentOffset === 0) setNotifications(data.notifications || []);
+        else setNotifications(prev => [...prev, ...(data.notifications || [])]);
         setHasMore(data.hasMore || false);
         setOffset(currentOffset);
       }
@@ -68,188 +44,139 @@ export function NotificationHistory() {
     }
   };
 
-  const handleLoadMore = () => {
-    fetchNotifications(offset + 20);
-  };
+  const handleLoadMore = () => fetchNotifications(offset + 20);
 
   const handleMarkAsRead = async (id: string) => {
     try {
       const token = localStorage.getItem('operatorToken');
       if (!token) return;
-
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/notifications/${id}/read`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n => (n.id === id ? { ...n, isRead: true } : n))
-        );
-      }
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/${id}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     } catch (err) {
       console.error('Failed to mark as read:', err);
     }
   };
 
-  const handleRefresh = () => {
-    fetchNotifications(0);
-  };
-
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        {/* Header with Gradient Background */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-3xl shadow-2xl p-8">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full -mr-32 -mt-32"></div>
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-10 rounded-full -ml-24 -mb-24"></div>
-          <div className="relative z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl">
-                  <Bell className="w-8 h-8 text-white" />
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc, #eff6ff, #eef2ff)', padding: '24px' }}>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .load-more-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(37,99,235,0.4) !important; }
+        .refresh-btn:hover:not(:disabled) { background: rgba(255,255,255,0.35) !important; }
+        .select-field:focus { outline: none; border-color: #3b82f6 !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.1); }
+      `}</style>
+
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+        {/* Hero Header */}
+        <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #2563eb, #4f46e5, #7c3aed)', borderRadius: 24, padding: '40px 48px', marginBottom: 24, boxShadow: '0 20px 60px rgba(37,99,235,0.35)' }}>
+          <div style={{ position: 'absolute', top: -80, right: -80, width: 256, height: 256, background: 'rgba(255,255,255,0.08)', borderRadius: '50%' }} />
+          <div style={{ position: 'absolute', bottom: -60, left: -60, width: 192, height: 192, background: 'rgba(255,255,255,0.08)', borderRadius: '50%' }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                <div style={{ padding: 14, background: 'rgba(255,255,255,0.2)', borderRadius: 18, backdropFilter: 'blur(8px)' }}>
+                  <Bell size={32} color="#fff" />
                 </div>
                 <div>
-                  <h1 className="text-4xl font-bold text-white">Notification History</h1>
-                  <p className="text-blue-100 mt-1 text-lg">
-                    View and manage all system notifications
-                  </p>
+                  <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>Notification History</h1>
+                  <p style={{ margin: '6px 0 0', fontSize: 16, color: 'rgba(255,255,255,0.8)' }}>View and manage all system notifications</p>
                 </div>
               </div>
-              <button
-                onClick={handleRefresh}
-                disabled={loading}
-                className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl hover:bg-white/30 transition-all disabled:opacity-50"
-                title="Refresh notifications"
-              >
-                <RefreshCw className={`w-6 h-6 text-white ${loading ? 'animate-spin' : ''}`} />
+              <button onClick={() => fetchNotifications(0)} disabled={loading} className="refresh-btn"
+                style={{ padding: 14, background: 'rgba(255,255,255,0.2)', borderRadius: 16, border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, transition: 'background 0.2s', backdropFilter: 'blur(8px)' }}>
+                <RefreshCw size={24} color="#fff" style={{ animation: loading ? 'spin 1s linear infinite' : 'none', display: 'block' }} />
               </button>
             </div>
             {unreadCount > 0 && (
-              <div className="mt-4 inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full">
-                <div className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse"></div>
-                <span className="text-white font-semibold text-sm">
-                  {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
-                </span>
+              <div style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', padding: '8px 18px', borderRadius: 30 }}>
+                <span style={{ width: 8, height: 8, background: '#fde047', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+                <span style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>{unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Filters Card */}
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-xl">
-                <Filter className="w-5 h-5 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Filter Notifications</h3>
-            </div>
+        {/* Filters */}
+        <div style={{ background: '#fff', borderRadius: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 20 }}>
+          <div style={{ background: 'linear-gradient(135deg, #f9fafb, #f3f4f6)', padding: '18px 28px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ padding: 8, background: '#dbeafe', borderRadius: 12 }}><Filter size={18} color="#2563eb" /></div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>Filter Notifications</h3>
           </div>
-          <div className="p-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-900 uppercase tracking-wide">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  Status
-                </label>
-                <select
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value as 'all' | 'unread')}
-                  className="w-full border-2 border-gray-200 rounded-2xl px-5 py-3.5 text-base focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 font-semibold transition-all hover:border-gray-300"
-                >
-                  <option value="all">📋 All Notifications</option>
-                  <option value="unread">🔔 Unread Only</option>
-                </select>
-              </div>
-
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-900 uppercase tracking-wide">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                  Type
-                </label>
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  className="w-full border-2 border-gray-200 rounded-2xl px-5 py-3.5 text-base focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-500 font-semibold transition-all hover:border-gray-300"
-                >
-                  <option value="all">🌟 All Types</option>
-                  <option value="system_alert">⚠️ System Alerts</option>
-                  <option value="support_ticket">🎫 Support Tickets</option>
-                  <option value="subscription_update">💳 Subscriptions</option>
-                  <option value="payment_event">💰 Payments</option>
-                </select>
-              </div>
+          <div style={{ padding: '24px 28px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                <span style={{ width: 8, height: 8, background: '#2563eb', borderRadius: '50%', display: 'inline-block' }} />Status
+              </label>
+              <select value={filter} onChange={(e) => setFilter(e.target.value as 'all' | 'unread')} className="select-field"
+                style={{ width: '100%', border: '2px solid #e5e7eb', borderRadius: 14, padding: '12px 16px', fontSize: 14, fontWeight: 600, background: '#fff', cursor: 'pointer', transition: 'border-color 0.2s' }}>
+                <option value="all">📋 All Notifications</option>
+                <option value="unread">🔔 Unread Only</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                <span style={{ width: 8, height: 8, background: '#7c3aed', borderRadius: '50%', display: 'inline-block' }} />Type
+              </label>
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="select-field"
+                style={{ width: '100%', border: '2px solid #e5e7eb', borderRadius: 14, padding: '12px 16px', fontSize: 14, fontWeight: 600, background: '#fff', cursor: 'pointer', transition: 'border-color 0.2s' }}>
+                <option value="all">🌟 All Types</option>
+                <option value="system_alert">⚠️ System Alerts</option>
+                <option value="support_ticket">🎫 Support Tickets</option>
+                <option value="subscription_update">💳 Subscriptions</option>
+                <option value="payment_event">💰 Payments</option>
+              </select>
             </div>
           </div>
         </div>
 
         {/* Notification List */}
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
+        <div style={{ background: '#fff', borderRadius: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 20 }}>
           {loading && offset === 0 ? (
-            <div className="flex flex-col items-center justify-center p-20">
-              <div className="relative">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
-                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-600 absolute top-0 left-0"></div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px' }}>
+              <div style={{ position: 'relative', width: 64, height: 64 }}>
+                <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '4px solid #bfdbfe' }} />
+                <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '4px solid transparent', borderTopColor: '#2563eb', animation: 'spin 1s linear infinite' }} />
               </div>
-              <p className="mt-6 text-gray-600 font-semibold text-lg">Loading notifications...</p>
-              <p className="text-gray-500 text-sm mt-1">Please wait while we fetch your notifications</p>
+              <p style={{ marginTop: 24, color: '#374151', fontWeight: 600, fontSize: 17 }}>Loading notifications...</p>
+              <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 14 }}>Please wait while we fetch your notifications</p>
             </div>
           ) : notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-20 text-gray-500">
-              <div className="relative mb-6">
-                <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
-                  <Inbox className="w-12 h-12 text-blue-600" />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', color: '#6b7280' }}>
+              <div style={{ position: 'relative', marginBottom: 24 }}>
+                <div style={{ width: 96, height: 96, background: 'linear-gradient(135deg, #dbeafe, #e0e7ff)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Inbox size={48} color="#2563eb" />
                 </div>
-                <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-400 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-white" />
+                <div style={{ position: 'absolute', top: -8, right: -8, width: 32, height: 32, background: 'linear-gradient(135deg, #fbbf24, #f97316)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Sparkles size={16} color="#fff" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-gray-800 mb-2">All Clear!</p>
-              <p className="text-lg text-gray-600 mb-1">No notifications found</p>
-              <p className="text-sm text-gray-500">Try adjusting your filters or check back later</p>
+              <p style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 800, color: '#111827' }}>All Clear!</p>
+              <p style={{ margin: '0 0 4px', fontSize: 16, color: '#374151' }}>No notifications found</p>
+              <p style={{ margin: 0, fontSize: 14, color: '#9ca3af' }}>Try adjusting your filters or check back later</p>
             </div>
           ) : (
             <>
-              <div className="divide-y divide-gray-100">
-                {notifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    notification={notification}
-                    onClick={() => handleMarkAsRead(notification.id)}
-                  />
+              <div style={{ borderBottom: '1px solid #f3f4f6' }}>
+                {notifications.map((notification, i) => (
+                  <div key={notification.id} style={{ borderBottom: i < notifications.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                    <NotificationItem notification={notification} onClick={() => handleMarkAsRead(notification.id)} />
+                  </div>
                 ))}
               </div>
-
               {hasMore && (
-                <div className="p-8 text-center border-t-2 border-gray-100 bg-gradient-to-b from-white to-gray-50">
-                  <button
-                    onClick={handleLoadMore}
-                    disabled={loading}
-                    className="group relative px-10 py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:-translate-y-1 hover:scale-105 text-base"
-                  >
+                <div style={{ padding: '32px', textAlign: 'center', background: 'linear-gradient(to bottom, #fff, #f9fafb)', borderTop: '2px solid #f3f4f6' }}>
+                  <button onClick={handleLoadMore} disabled={loading} className="load-more-btn"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '14px 32px', background: 'linear-gradient(135deg, #2563eb, #4f46e5, #7c3aed)', color: '#fff', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, boxShadow: '0 4px 16px rgba(37,99,235,0.3)', transition: 'all 0.2s' }}>
                     {loading ? (
-                      <span className="flex items-center gap-3">
-                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                        Loading More...
-                      </span>
+                      <><div style={{ width: 20, height: 20, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />Loading More...</>
                     ) : (
-                      <span className="flex items-center gap-3">
-                        <CheckCheck className="w-5 h-5" />
-                        Load More Notifications
-                      </span>
+                      <><CheckCheck size={18} />Load More Notifications</>
                     )}
                   </button>
-                  <p className="text-sm text-gray-500 mt-3">
-                    Showing {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
-                  </p>
+                  <p style={{ margin: '12px 0 0', fontSize: 13, color: '#9ca3af' }}>Showing {notifications.length} notification{notifications.length !== 1 ? 's' : ''}</p>
                 </div>
               )}
             </>
@@ -258,17 +185,13 @@ export function NotificationHistory() {
 
         {/* Info Card */}
         {notifications.length > 0 && (
-          <div className="relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl p-6 shadow-2xl">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-white opacity-10 rounded-full -mr-24 -mt-24"></div>
-            <div className="relative z-10 flex items-center gap-4">
-              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
+          <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899)', borderRadius: 24, padding: '28px 36px', boxShadow: '0 12px 40px rgba(99,102,241,0.3)' }}>
+            <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, background: 'rgba(255,255,255,0.08)', borderRadius: '50%' }} />
+            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ padding: 12, background: 'rgba(255,255,255,0.2)', borderRadius: 16, flexShrink: 0 }}><Sparkles size={24} color="#fff" /></div>
               <div>
-                <h4 className="text-white font-bold text-lg">Stay Updated</h4>
-                <p className="text-white/90 text-sm">
-                  Click on any notification to mark it as read and keep your inbox organized
-                </p>
+                <h4 style={{ margin: '0 0 4px', fontWeight: 700, color: '#fff', fontSize: 16 }}>Stay Updated</h4>
+                <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.9)' }}>Click on any notification to mark it as read and keep your inbox organized</p>
               </div>
             </div>
           </div>
