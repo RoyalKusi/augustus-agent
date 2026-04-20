@@ -77,31 +77,25 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/dashboard/conversations/:id/messages', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      // First verify the conversation belongs to this business
-      const convCheck = await pool.query<{ id: string; message_count: number }>(
-        `SELECT id, message_count FROM conversations WHERE id = $1 AND business_id = $2`,
-        [id, request.businessId],
-      );
-      if (convCheck.rows.length === 0) {
-        return reply.status(404).send({ error: 'Conversation not found.' });
-      }
-
-      // Fetch messages — use conversation_id only (business ownership verified above)
+      // Fetch messages directly by conversation_id
+      // Security: the conversation list endpoint already filters by business_id,
+      // so the client only knows IDs of their own conversations
       const result = await pool.query<{
         id: string;
         direction: string;
         content: string;
         created_at: Date | string;
       }>(
-        `SELECT id, direction, content, created_at
-         FROM messages
-         WHERE conversation_id = $1
-         ORDER BY created_at ASC
+        `SELECT m.id, m.direction, m.content, m.created_at
+         FROM messages m
+         INNER JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.conversation_id = $1 AND c.business_id = $2
+         ORDER BY m.created_at ASC
          LIMIT 200`,
-        [id],
+        [id, request.businessId],
       );
 
-      app.log.info({ conversationId: id, dbMessageCount: convCheck.rows[0].message_count, fetchedMessages: result.rows.length }, '[Dashboard] Messages fetched');
+      app.log.info({ conversationId: id, businessId: request.businessId, count: result.rows.length }, '[Dashboard] Messages fetched');
 
       const messages = result.rows.map((r) => ({
         id: r.id,

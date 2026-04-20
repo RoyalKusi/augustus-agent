@@ -68,7 +68,7 @@ const start = async () => {
     app.get('/diag/conversations', async (_req, reply) => {
       try {
         const convs = await pool.query(
-          `SELECT c.id, c.customer_wa_number, c.message_count AS counter, c.status,
+          `SELECT c.id, c.customer_wa_number, c.message_count AS counter, c.status, c.business_id,
                   COUNT(m.id)::int AS actual_messages
            FROM conversations c
            LEFT JOIN messages m ON m.conversation_id = c.id
