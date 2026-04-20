@@ -24,7 +24,7 @@ export function NotificationHistory() {
   const fetchNotifications = async (currentOffset: number) => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('operatorToken');
+      const token = localStorage.getItem('augustus_operator_token');
       if (!token) return;
       const params = new URLSearchParams({ limit: '20', offset: currentOffset.toString() });
       if (filter === 'unread') params.append('unread', 'true');
@@ -48,7 +48,7 @@ export function NotificationHistory() {
 
   const handleMarkAsRead = async (id: string) => {
     try {
-      const token = localStorage.getItem('operatorToken');
+      const token = localStorage.getItem('augustus_operator_token');
       if (!token) return;
       const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/${id}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));

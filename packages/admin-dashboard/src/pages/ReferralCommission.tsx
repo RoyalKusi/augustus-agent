@@ -30,7 +30,7 @@ export default function ReferralCommission() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('operatorToken');
+      const token = localStorage.getItem('augustus_operator_token');
       if (!token) { setError('Authentication required'); return; }
       const settingsRes = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`, { headers: { Authorization: `Bearer ${token}` } });
       if (!settingsRes.ok) throw new Error('Failed to fetch settings');
@@ -51,7 +51,7 @@ export default function ReferralCommission() {
   const handleSave = async () => {
     setSaving(true); setError(null); setSuccess(null);
     try {
-      const token = localStorage.getItem('operatorToken');
+      const token = localStorage.getItem('augustus_operator_token');
       if (!token) { setError('Authentication required'); return; }
       const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`, {
         method: 'POST',

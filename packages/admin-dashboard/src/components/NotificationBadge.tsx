@@ -10,36 +10,25 @@ export function NotificationBadge({ onClick }: NotificationBadgeProps) {
   const [animate, setAnimate] = useState(false);
 
   useEffect(() => {
-    // Initial fetch
     fetchUnreadCount();
-
-    // Poll every 30 seconds
     const interval = setInterval(fetchUnreadCount, 30000);
-
     return () => clearInterval(interval);
   }, []);
 
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('operatorToken');
+      const token = localStorage.getItem('augustus_operator_token');
       if (!token) return;
-
       const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/unread-count`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
-
       if (response.ok) {
         const data = await response.json();
         const newCount = data.count || 0;
-        
-        // Trigger animation if count increased
         if (newCount > count) {
           setAnimate(true);
           setTimeout(() => setAnimate(false), 1000);
         }
-        
         setCount(newCount);
       }
     } catch (err) {
@@ -51,24 +40,61 @@ export function NotificationBadge({ onClick }: NotificationBadgeProps) {
   const shouldShow = count > 0;
 
   return (
-    <button
-      onClick={onClick}
-      className="relative p-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-all duration-200"
-      aria-label={`Notifications${shouldShow ? ` (${displayCount} unread)` : ''}`}
-    >
-      <Bell className={`w-6 h-6 ${shouldShow ? 'text-blue-600' : ''}`} />
-      {shouldShow && (
-        <span
-          className={`absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold leading-none text-white bg-gradient-to-br from-red-500 to-red-600 rounded-full shadow-lg border-2 border-white ${
-            animate ? 'animate-bounce' : ''
-          }`}
-          style={{
-            animation: animate ? 'bounce 0.5s ease-in-out 2' : 'none'
-          }}
-        >
-          {displayCount}
-        </span>
-      )}
-    </button>
+    <>
+      <style>{`
+        @keyframes badgeBounce {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.3); }
+        }
+        .notif-btn:hover { background: #f3f4f6 !important; color: #111827 !important; }
+        .notif-btn:focus { outline: 2px solid #3b82f6; outline-offset: 2px; }
+      `}</style>
+      <button
+        onClick={onClick}
+        className="notif-btn"
+        style={{
+          position: 'relative',
+          padding: '10px',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: 8,
+          cursor: 'pointer',
+          color: shouldShow ? '#2563eb' : '#4b5563',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        aria-label={`Notifications${shouldShow ? ` (${displayCount} unread)` : ''}`}
+      >
+        <Bell size={24} />
+        {shouldShow && (
+          <span
+            style={{
+              position: 'absolute',
+              top: -2,
+              right: -2,
+              minWidth: 20,
+              height: 20,
+              padding: '0 5px',
+              fontSize: 11,
+              fontWeight: 700,
+              lineHeight: '20px',
+              color: '#fff',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              borderRadius: 10,
+              border: '2px solid #fff',
+              boxShadow: '0 2px 6px rgba(220,38,38,0.5)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              animation: animate ? 'badgeBounce 0.4s ease-in-out 2' : 'none',
+            }}
+          >
+            {displayCount}
+          </span>
+        )}
+      </button>
+    </>
   );
 }
