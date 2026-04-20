@@ -47,28 +47,42 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/dashboard/conversations/:id/messages', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
+      // First verify the conversation belongs to this business
+      const convCheck = await pool.query<{ id: string }>(
+        `SELECT id FROM conversations WHERE id = $1 AND business_id = $2`,
+        [id, request.businessId],
+      );
+      if (convCheck.rows.length === 0) {
+        return reply.status(404).send({ error: 'Conversation not found.' });
+      }
+
+      // Fetch messages — use conversation_id only (business ownership verified above)
+      // This avoids issues where messages may have been stored with a different business_id reference
       const result = await pool.query<{
         id: string;
         direction: string;
         content: string;
-        created_at: Date;
+        created_at: Date | string;
       }>(
         `SELECT id, direction, content, created_at
          FROM messages
-         WHERE conversation_id = $1 AND business_id = $2
+         WHERE conversation_id = $1
          ORDER BY created_at ASC
          LIMIT 200`,
-        [id, request.businessId],
+        [id],
       );
       const messages = result.rows.map((r) => ({
         id: r.id,
         direction: r.direction,
         content: r.content,
-        createdAt: r.created_at.toISOString(),
+        createdAt: r.created_at instanceof Date
+          ? r.created_at.toISOString()
+          : String(r.created_at),
       }));
       return reply.send({ messages });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch messages.';
+      app.log.error({ err, conversationId: id }, '[Dashboard] Failed to fetch messages');
       return reply.status(500).send({ error: message });
     }
   });

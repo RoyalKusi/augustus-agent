@@ -48,6 +48,7 @@ export default function Conversations() {
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [sending, setSending] = useState<Record<string, boolean>>({});
   const [convMessages, setConvMessages] = useState<Record<string, Message[]>>({});
+  const [convLoading, setConvLoading] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [labelMenuOpen, setLabelMenuOpen] = useState<string | null>(null);
   const [filterLabel, setFilterLabel] = useState<string | null | 'all'>('all');
@@ -76,11 +77,11 @@ export default function Conversations() {
     }
   }, []);
 
-  const loadMessages = useCallback(async (convId: string) => {
+  const loadMessages = useCallback(async (convId: string, showLoading = false) => {
+    if (showLoading) setConvLoading(prev => ({ ...prev, [convId]: true }));
     try {
       const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
       const newMessages = data.messages ?? [];
-      
       setConvMessages((prevMessages) => {
         const oldMessages = prevMessages[convId] ?? [];
         const hasNewMessages = newMessages.length > oldMessages.length;
@@ -94,10 +95,11 @@ export default function Conversations() {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      // Only show non-auth errors to avoid noise
-      if (msg && !msg.includes('session has expired') && !msg.includes('expired')) {
+      if (msg && !msg.includes('session has expired') && !msg.includes('expired') && showLoading) {
         setActionError(`Failed to load messages: ${msg}`);
       }
+    } finally {
+      if (showLoading) setConvLoading(prev => ({ ...prev, [convId]: false }));
     }
   }, []);
 
@@ -137,7 +139,7 @@ export default function Conversations() {
     const next = !expanded[conv.id];
     expandedRef.current = { ...expandedRef.current, [conv.id]: next };
     setExpanded((e) => ({ ...e, [conv.id]: next }));
-    if (next) await loadMessages(conv.id);
+    if (next) await loadMessages(conv.id, true);
   };
 
   const toggleIntervention = async (conv: Conversation) => {
@@ -160,7 +162,7 @@ export default function Conversations() {
     try {
       await apiFetch(`/conversations/${conv.id}/intervention/message`, { method: 'POST', body: JSON.stringify({ agent_id: AGENT_ID, message: text }) });
       setMessages((m) => ({ ...m, [conv.id]: '' }));
-      await Promise.all([loadMessages(conv.id), load()]);
+      await Promise.all([loadMessages(conv.id, true), load()]);
     } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to send message'); }
     finally { setSending((s) => ({ ...s, [conv.id]: false })); }
   };
@@ -383,7 +385,12 @@ export default function Conversations() {
           {expanded[conv.id] && (
             <div style={{ marginTop: 12 }}>
               <div ref={(el) => { threadRefs.current[conv.id] = el; }} style={threadStyle}>
-                {(convMessages[conv.id] ?? []).length === 0 ? (
+                {convLoading[conv.id] ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '16px 0', color: '#718096', fontSize: 13 }}>
+                    <span style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid #cbd5e0', borderTopColor: '#3182ce', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    Loading messages…
+                  </div>
+                ) : (convMessages[conv.id] ?? []).length === 0 ? (
                   <p style={{ color: '#a0aec0', fontSize: 13, textAlign: 'center', margin: '12px 0' }}>No messages yet.</p>
                 ) : (
                   (convMessages[conv.id] ?? []).map((msg) => (
