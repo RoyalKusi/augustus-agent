@@ -185,7 +185,13 @@ export default function DashboardLayout() {
         )}
 
         <main style={{ flex: 1, padding: isMobile ? '16px 14px' : 24, background: '#f7fafc', overflowX: 'hidden' }}>
-          <Outlet />
+          <style>{`
+            @keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+            .page-content { animation: pageIn 0.2s ease; }
+          `}</style>
+          <div className="page-content">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

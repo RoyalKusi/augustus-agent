@@ -82,16 +82,17 @@ export default function Conversations() {
     try {
       const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
       const newMessages = data.messages ?? [];
-      setConvMessages((prevMessages) => {
-        const oldMessages = prevMessages[convId] ?? [];
-        const hasNewMessages = newMessages.length > oldMessages.length;
-        if (hasNewMessages) {
+      setConvMessages(prev => {
+        const old = prev[convId] ?? [];
+        const hasNew = newMessages.length > old.length;
+        if (hasNew) {
           setTimeout(() => {
             const el = threadRefs.current[convId];
             if (el) el.scrollTop = el.scrollHeight;
-          }, 100);
+          }, 80);
         }
-        return { ...prevMessages, [convId]: newMessages };
+        // Always update — even if same count, content may differ
+        return { ...prev, [convId]: newMessages };
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
@@ -386,14 +387,19 @@ export default function Conversations() {
             <div style={{ marginTop: 12 }}>
               <div ref={(el) => { threadRefs.current[conv.id] = el; }} style={threadStyle}>
                 {convLoading[conv.id] ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '16px 0', color: '#718096', fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', color: '#718096', fontSize: 13 }}>
                     <span style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid #cbd5e0', borderTopColor: '#3182ce', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
                     Loading messages…
                   </div>
-                ) : (convMessages[conv.id] ?? []).length === 0 ? (
+                ) : convMessages[conv.id] === undefined ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', color: '#718096', fontSize: 13 }}>
+                    <span style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid #cbd5e0', borderTopColor: '#3182ce', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    Loading messages…
+                  </div>
+                ) : convMessages[conv.id].length === 0 ? (
                   <p style={{ color: '#a0aec0', fontSize: 13, textAlign: 'center', margin: '12px 0' }}>No messages yet.</p>
                 ) : (
-                  (convMessages[conv.id] ?? []).map((msg) => (
+                  convMessages[conv.id].map((msg) => (
                     <div key={msg.id} style={{ display: 'flex', justifyContent: msg.direction === 'outbound' ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                       <div style={bubbleStyle(msg.direction)}>
                         <div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
