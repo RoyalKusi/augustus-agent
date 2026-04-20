@@ -43,13 +43,25 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // GET /dashboard/debug/messages/:id — unauthenticated debug endpoint (REMOVE IN PRODUCTION)
+  app.get('/dashboard/debug/messages/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const conv = await pool.query(`SELECT id, business_id, message_count, customer_wa_number FROM conversations WHERE id = $1`, [id]);
+      const msgs = await pool.query(`SELECT id, direction, content, created_at, meta_message_id FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20`, [id]);
+      return reply.send({ conversation: conv.rows[0] ?? null, messageCount: msgs.rows.length, messages: msgs.rows });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed' });
+    }
+  });
+
   // GET /dashboard/conversations/:id/messages
   app.get('/dashboard/conversations/:id/messages', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       // First verify the conversation belongs to this business
-      const convCheck = await pool.query<{ id: string }>(
-        `SELECT id FROM conversations WHERE id = $1 AND business_id = $2`,
+      const convCheck = await pool.query<{ id: string; message_count: number }>(
+        `SELECT id, message_count FROM conversations WHERE id = $1 AND business_id = $2`,
         [id, request.businessId],
       );
       if (convCheck.rows.length === 0) {
@@ -57,7 +69,6 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Fetch messages — use conversation_id only (business ownership verified above)
-      // This avoids issues where messages may have been stored with a different business_id reference
       const result = await pool.query<{
         id: string;
         direction: string;
@@ -71,6 +82,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
          LIMIT 200`,
         [id],
       );
+
+      app.log.info({ conversationId: id, dbMessageCount: convCheck.rows[0].message_count, fetchedMessages: result.rows.length }, '[Dashboard] Messages fetched');
+
       const messages = result.rows.map((r) => ({
         id: r.id,
         direction: r.direction,
