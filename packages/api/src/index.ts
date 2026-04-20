@@ -6,6 +6,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, createReadStream, readFileSync } from 'fs';
 import { runMigrations } from './db/client.js';
+import { pool } from './db/client.js';
 import { authRoutes } from './modules/auth/index.js';
 import { subscriptionRoutes } from './modules/subscription/index.js';
 import { catalogueRoutes } from './modules/catalogue/index.js';
@@ -62,6 +63,32 @@ const start = async () => {
 
     app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
     app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
+
+    // Diagnostic: list conversations and their actual message counts
+    app.get('/diag/conversations', async (_req, reply) => {
+      try {
+        const convs = await pool.query(
+          `SELECT c.id, c.customer_wa_number, c.message_count AS counter, c.status,
+                  COUNT(m.id)::int AS actual_messages
+           FROM conversations c
+           LEFT JOIN messages m ON m.conversation_id = c.id
+           GROUP BY c.id ORDER BY c.updated_at DESC LIMIT 20`
+        );
+        return reply.send({ conversations: convs.rows });
+      } catch (err) { return reply.status(500).send({ error: String(err) }); }
+    });
+
+    // Diagnostic: get messages for a specific conversation
+    app.get('/diag/messages/:id', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      try {
+        const msgs = await pool.query(
+          `SELECT id, direction, LEFT(content, 80) AS content, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 30`,
+          [id]
+        );
+        return reply.send({ conversationId: id, count: msgs.rows.length, messages: msgs.rows });
+      } catch (err) { return reply.status(500).send({ error: String(err) }); }
+    });
     app.get('/health/paths', async () => {
       const businessDist = join(__dirname, '../../business-dashboard/dist');
       const adminDist = join(__dirname, '../../admin-dashboard/dist');
