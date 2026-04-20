@@ -55,6 +55,24 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // GET /dashboard/debug/conversations — list all conversations with message counts
+  app.get('/dashboard/debug/conversations', async (_request, reply) => {
+    try {
+      const convs = await pool.query(
+        `SELECT c.id, c.customer_wa_number, c.message_count, c.status, c.business_id,
+                COUNT(m.id) AS actual_message_count
+         FROM conversations c
+         LEFT JOIN messages m ON m.conversation_id = c.id
+         GROUP BY c.id
+         ORDER BY c.updated_at DESC
+         LIMIT 20`
+      );
+      return reply.send({ conversations: convs.rows });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed' });
+    }
+  });
+
   // GET /dashboard/conversations/:id/messages
   app.get('/dashboard/conversations/:id/messages', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
