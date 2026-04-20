@@ -53,6 +53,7 @@ export default function Conversations() {
   const [filterLabel, setFilterLabel] = useState<string | null | 'all'>('all');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const threadRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const expandedRef = useRef<Record<string, boolean>>({});
 
   // Broadcast state
   const [broadcastOpen, setBroadcastOpen] = useState(false);
@@ -81,21 +82,23 @@ export default function Conversations() {
       const newMessages = data.messages ?? [];
       
       setConvMessages((prevMessages) => {
-        // Check if there are new messages
         const oldMessages = prevMessages[convId] ?? [];
         const hasNewMessages = newMessages.length > oldMessages.length;
-        
-        // Auto-scroll to bottom if there are new messages
         if (hasNewMessages) {
           setTimeout(() => {
             const el = threadRefs.current[convId];
             if (el) el.scrollTop = el.scrollHeight;
           }, 100);
         }
-        
         return { ...prevMessages, [convId]: newMessages };
       });
-    } catch { /* silently ignore */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      // Only show non-auth errors to avoid noise
+      if (msg && !msg.includes('session has expired') && !msg.includes('expired')) {
+        setActionError(`Failed to load messages: ${msg}`);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -109,30 +112,30 @@ export default function Conversations() {
 
   useEffect(() => {
     load();
-    // Reduced interval for more frequent updates (every 5 seconds)
     const listInterval = setInterval(load, 5_000);
     return () => clearInterval(listInterval);
   }, [load]);
 
   useEffect(() => {
-    // Reduced interval for more frequent message updates (every 3 seconds)
+    // Use ref so the interval always sees the latest expanded state without needing to restart
     const msgInterval = setInterval(() => {
-      Object.keys(expanded).forEach((convId) => {
-        if (expanded[convId]) loadMessages(convId);
+      Object.keys(expandedRef.current).forEach((convId) => {
+        if (expandedRef.current[convId]) loadMessages(convId);
       });
     }, 3_000);
     return () => clearInterval(msgInterval);
-  }, [expanded, loadMessages]);
+  }, [loadMessages]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([load(), ...Object.keys(expanded).filter(id => expanded[id]).map(id => loadMessages(id))]);
+      await Promise.all([load(), ...Object.keys(expandedRef.current).filter(id => expandedRef.current[id]).map(id => loadMessages(id))]);
     } finally { setRefreshing(false); }
   };
 
   const toggleExpand = async (conv: Conversation) => {
     const next = !expanded[conv.id];
+    expandedRef.current = { ...expandedRef.current, [conv.id]: next };
     setExpanded((e) => ({ ...e, [conv.id]: next }));
     if (next) await loadMessages(conv.id);
   };
