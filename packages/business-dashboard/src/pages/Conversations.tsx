@@ -80,21 +80,23 @@ export default function Conversations() {
       const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
       const newMessages = data.messages ?? [];
       
-      // Check if there are new messages
-      const oldMessages = convMessages[convId] ?? [];
-      const hasNewMessages = newMessages.length > oldMessages.length;
-      
-      setConvMessages((m) => ({ ...m, [convId]: newMessages }));
-      
-      // Auto-scroll to bottom if there are new messages
-      if (hasNewMessages) {
-        setTimeout(() => {
-          const el = threadRefs.current[convId];
-          if (el) el.scrollTop = el.scrollHeight;
-        }, 100);
-      }
+      setConvMessages((prevMessages) => {
+        // Check if there are new messages
+        const oldMessages = prevMessages[convId] ?? [];
+        const hasNewMessages = newMessages.length > oldMessages.length;
+        
+        // Auto-scroll to bottom if there are new messages
+        if (hasNewMessages) {
+          setTimeout(() => {
+            const el = threadRefs.current[convId];
+            if (el) el.scrollTop = el.scrollHeight;
+          }, 100);
+        }
+        
+        return { ...prevMessages, [convId]: newMessages };
+      });
     } catch { /* silently ignore */ }
-  }, [convMessages]);
+  }, []);
 
   useEffect(() => {
     Object.keys(expanded).forEach((convId) => {
