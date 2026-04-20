@@ -1,4 +1,7 @@
-const BASE_URL = import.meta.env.VITE_API_URL || '';
+// In production the business dashboard is served from the same origin as the API.
+// Use empty string so all API calls are relative to the current origin.
+// VITE_API_URL is only used in local dev to proxy to localhost:3000.
+const BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/^http:\/\/localhost:\d+$/, '');
 
 // Check if the stored JWT token is expired (client-side, no network call)
 export function isTokenExpired(): boolean {
