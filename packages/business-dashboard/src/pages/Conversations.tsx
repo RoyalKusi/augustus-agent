@@ -51,6 +51,7 @@ export default function Conversations() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [labelMenuOpen, setLabelMenuOpen] = useState<string | null>(null);
   const [filterLabel, setFilterLabel] = useState<string | null | 'all'>('all');
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const threadRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Broadcast state
@@ -64,6 +65,7 @@ export default function Conversations() {
     try {
       const data = await apiFetch<{ conversations: Conversation[] }>('/dashboard/conversations');
       setConversations(data.conversations ?? []);
+      setLastUpdate(new Date());
       setError('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
@@ -76,9 +78,23 @@ export default function Conversations() {
   const loadMessages = useCallback(async (convId: string) => {
     try {
       const data = await apiFetch<{ messages: Message[] }>(`/dashboard/conversations/${convId}/messages`);
-      setConvMessages((m) => ({ ...m, [convId]: data.messages ?? [] }));
+      const newMessages = data.messages ?? [];
+      
+      // Check if there are new messages
+      const oldMessages = convMessages[convId] ?? [];
+      const hasNewMessages = newMessages.length > oldMessages.length;
+      
+      setConvMessages((m) => ({ ...m, [convId]: newMessages }));
+      
+      // Auto-scroll to bottom if there are new messages
+      if (hasNewMessages) {
+        setTimeout(() => {
+          const el = threadRefs.current[convId];
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 100);
+      }
     } catch { /* silently ignore */ }
-  }, []);
+  }, [convMessages]);
 
   useEffect(() => {
     Object.keys(expanded).forEach((convId) => {
@@ -91,16 +107,18 @@ export default function Conversations() {
 
   useEffect(() => {
     load();
-    const listInterval = setInterval(load, 30_000);
+    // Reduced interval for more frequent updates (every 5 seconds)
+    const listInterval = setInterval(load, 5_000);
     return () => clearInterval(listInterval);
   }, [load]);
 
   useEffect(() => {
+    // Reduced interval for more frequent message updates (every 3 seconds)
     const msgInterval = setInterval(() => {
       Object.keys(expanded).forEach((convId) => {
         if (expanded[convId]) loadMessages(convId);
       });
-    }, 10_000);
+    }, 3_000);
     return () => clearInterval(msgInterval);
   }, [expanded, loadMessages]);
 
@@ -193,7 +211,12 @@ export default function Conversations() {
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-        <h2 style={{ margin: 0 }}>Active Conversations</h2>
+        <div>
+          <h2 style={{ margin: 0 }}>Active Conversations</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#718096' }}>
+            🟢 Live updates · Last refreshed: {lastUpdate.toLocaleTimeString()}
+          </p>
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => { setBroadcastOpen(b => !b); setBroadcastResult(null); }} style={{ ...ghostBtn, background: broadcastOpen ? '#ebf8ff' : undefined, color: broadcastOpen ? '#2b6cb0' : undefined }}>
             📢 Broadcast

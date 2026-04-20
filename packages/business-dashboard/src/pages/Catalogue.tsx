@@ -38,9 +38,23 @@ const EXCEL_COLUMNS = ['name', 'description', 'price', 'currency', 'stock_quanti
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
-async function uploadImages(files: File[], token: string): Promise<string[]> {
+async function uploadImages(files: File[], token: string): Promise<{ urls: string[]; errors: string[] }> {
   const urls: string[] = [];
+  const errors: string[] = [];
+  
   for (const file of files) {
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      errors.push(`${file.name}: Not an image file`);
+      continue;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      errors.push(`${file.name}: File too large (max 5MB)`);
+      continue;
+    }
+    
     const fd = new FormData();
     fd.append('file', file);
     try {
@@ -49,14 +63,27 @@ async function uploadImages(files: File[], token: string): Promise<string[]> {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
-      if (!res.ok) continue; // skip failed uploads silently
-      const data = await res.json() as { url?: string };
-      if (data.url) urls.push(data.url);
-    } catch {
-      // skip on network error
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Upload failed' })) as { error?: string };
+        errors.push(`${file.name}: ${errorData.error || `HTTP ${res.status}`}`);
+        continue;
+      }
+      
+      const data = await res.json() as { url?: string; error?: string };
+      if (data.error) {
+        errors.push(`${file.name}: ${data.error}`);
+      } else if (data.url) {
+        urls.push(data.url);
+      } else {
+        errors.push(`${file.name}: No URL returned`);
+      }
+    } catch (err) {
+      errors.push(`${file.name}: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   }
-  return urls;
+  
+  return { urls, errors };
 }
 
 
@@ -71,6 +98,7 @@ export default function Catalogue() {
   const [comboForm, setComboForm] = useState({ name: '', promo_price: '', currency: 'USD', product_ids: [] as string[] });
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<'products' | 'import' | 'combos'>('products');
   const [excelRows, setExcelRows] = useState<Record<string, string>[]>([]);
@@ -121,20 +149,32 @@ export default function Catalogue() {
 
   const submitProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(''); setMsg(''); setLoading(true);
+    setError(''); setMsg(''); setUploadErrors([]); setLoading(true);
     try {
       // Build final image_urls: for each slot, use new upload if selected, else keep existing URL
       const finalUrls: string[] = [];
+      const allUploadErrors: string[] = [];
+      
       for (let i = 0; i < 3; i++) {
         const newFile = form.images[i];
         const existingUrl = form.existingImageUrls[i];
         if (newFile) {
           // Upload new file for this slot
-          const uploaded = await uploadImages([newFile], token);
-          if (uploaded[0]) finalUrls.push(uploaded[0]);
+          const { urls, errors } = await uploadImages([newFile], token);
+          if (errors.length > 0) {
+            allUploadErrors.push(...errors);
+          }
+          if (urls[0]) {
+            finalUrls.push(urls[0]);
+          }
         } else if (existingUrl) {
           finalUrls.push(existingUrl);
         }
+      }
+      
+      // Show upload errors but continue with product creation
+      if (allUploadErrors.length > 0) {
+        setUploadErrors(allUploadErrors);
       }
 
       const body = {
@@ -148,10 +188,10 @@ export default function Catalogue() {
       };
       if (editId) {
         await apiFetch(`/catalogue/products/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
-        setMsg('Product updated.');
+        setMsg('Product updated.' + (allUploadErrors.length > 0 ? ' Some images failed to upload.' : ''));
       } else {
         await apiFetch('/catalogue/products', { method: 'POST', body: JSON.stringify(body) });
-        setMsg('Product added.');
+        setMsg('Product added.' + (allUploadErrors.length > 0 ? ' Some images failed to upload.' : ''));
       }
       setForm(EMPTY_PRODUCT);
       setEditId(null);
@@ -302,6 +342,14 @@ export default function Catalogue() {
       <h2>Catalogue</h2>
       {error && <p style={errStyle}>{error}</p>}
       {msg && <p style={okStyle}>{msg}</p>}
+      {uploadErrors.length > 0 && (
+        <div style={{ ...errStyle, marginBottom: 12 }}>
+          <strong>Image Upload Errors:</strong>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+            {uploadErrors.map((err, i) => <li key={i} style={{ fontSize: 13 }}>{err}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #e2e8f0' }}>
@@ -407,8 +455,20 @@ export default function Catalogue() {
                         <img
                           key={i}
                           src={url}
-                          alt=""
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          alt={`${p.name} image ${i + 1}`}
+                          onError={(e) => { 
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = 'none';
+                            // Show broken image indicator
+                            const parent = img.parentElement;
+                            if (parent && !parent.querySelector('.broken-img-indicator')) {
+                              const indicator = document.createElement('span');
+                              indicator.className = 'broken-img-indicator';
+                              indicator.style.cssText = 'color: #e53e3e; fontSize: 10px; padding: 2px 4px; background: #fff5f5; borderRadius: 3px; border: 1px solid #feb2b2;';
+                              indicator.textContent = '❌ Failed';
+                              parent.appendChild(indicator);
+                            }
+                          }}
                           style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid #e2e8f0' }}
                         />
                       ))}
