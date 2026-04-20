@@ -156,7 +156,7 @@ const start = async () => {
         // SPA fallback: serve index.html for all browser navigations to non-API paths
         // API paths are handled by their own registered routes above
         const apiPrefixes = ['/auth/', '/dashboard/', '/whatsapp/', '/payments/', '/conversations/',
-          '/webhooks/', '/admin/', '/catalogue/', '/training/', '/subscription/', '/health', '/legal/'];
+          '/webhooks/', '/admin/', '/catalogue/', '/training/', '/subscription/', '/health', '/legal/', '/diag/'];
 
         app.setNotFoundHandler((req, reply) => {
           const path = req.url.split('?')[0];
