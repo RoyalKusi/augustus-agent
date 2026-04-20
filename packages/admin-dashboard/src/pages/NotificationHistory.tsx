@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bell, Filter, Sparkles, RefreshCw, CheckCheck, Inbox } from 'lucide-react';
 import { NotificationItem } from '../components/NotificationItem';
+import { adminApiFetch } from '../api';
 
 interface Notification {
   id: string;
@@ -24,19 +25,14 @@ export function NotificationHistory() {
   const fetchNotifications = async (currentOffset: number) => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) return;
       const params = new URLSearchParams({ limit: '20', offset: currentOffset.toString() });
       if (filter === 'unread') params.append('unread', 'true');
       if (typeFilter !== 'all') params.append('type', typeFilter);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        if (currentOffset === 0) setNotifications(data.notifications || []);
-        else setNotifications(prev => [...prev, ...(data.notifications || [])]);
-        setHasMore(data.hasMore || false);
-        setOffset(currentOffset);
-      }
+      const data = await adminApiFetch<{ notifications: Notification[]; hasMore: boolean }>(`/admin/notifications?${params}`);
+      if (currentOffset === 0) setNotifications(data.notifications || []);
+      else setNotifications(prev => [...prev, ...(data.notifications || [])]);
+      setHasMore(data.hasMore || false);
+      setOffset(currentOffset);
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     } finally {
@@ -48,10 +44,8 @@ export function NotificationHistory() {
 
   const handleMarkAsRead = async (id: string) => {
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) return;
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/${id}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      await adminApiFetch(`/admin/notifications/${id}/read`, { method: 'PATCH' });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     } catch (err) {
       console.error('Failed to mark as read:', err);
     }

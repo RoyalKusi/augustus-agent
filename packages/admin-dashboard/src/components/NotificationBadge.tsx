@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
+import { adminApiFetch } from '../api';
 
 interface NotificationBadgeProps {
   onClick: () => void;
@@ -17,20 +18,13 @@ export function NotificationBadge({ onClick }: NotificationBadgeProps) {
 
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) return;
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/unread-count`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const newCount = data.count || 0;
-        if (newCount > count) {
-          setAnimate(true);
-          setTimeout(() => setAnimate(false), 1000);
-        }
-        setCount(newCount);
+      const data = await adminApiFetch<{ count: number }>('/admin/notifications/unread-count');
+      const newCount = data.count || 0;
+      if (newCount > count) {
+        setAnimate(true);
+        setTimeout(() => setAnimate(false), 1000);
       }
+      setCount(newCount);
     } catch (err) {
       console.error('Failed to fetch unread count:', err);
     }

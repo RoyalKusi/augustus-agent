@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, CheckCheck } from 'lucide-react';
 import { NotificationItem } from './NotificationItem';
+import { adminApiFetch } from '../api';
 
 interface Notification {
   id: string;
@@ -29,16 +30,9 @@ export function NotificationCenter({ isOpen, onClose, onCountChange }: Notificat
   const fetchNotifications = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) return;
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications?limit=20`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications(data.notifications || []);
-        setHasMore(data.hasMore || false);
-      }
+      const data = await adminApiFetch<{ notifications: Notification[]; hasMore: boolean }>('/admin/notifications?limit=20');
+      setNotifications(data.notifications || []);
+      setHasMore(data.hasMore || false);
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     } finally {
@@ -48,16 +42,10 @@ export function NotificationCenter({ isOpen, onClose, onCountChange }: Notificat
 
   const handleMarkAsRead = async (id: string) => {
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) return;
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/${id}/read`, {
-        method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-        const unreadCount = notifications.filter(n => !n.isRead && n.id !== id).length;
-        onCountChange?.(unreadCount);
-      }
+      await adminApiFetch(`/admin/notifications/${id}/read`, { method: 'PATCH' });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      const unreadCount = notifications.filter(n => !n.isRead && n.id !== id).length;
+      onCountChange?.(unreadCount);
     } catch (err) {
       console.error('Failed to mark as read:', err);
     }
@@ -65,15 +53,9 @@ export function NotificationCenter({ isOpen, onClose, onCountChange }: Notificat
 
   const handleMarkAllAsRead = async () => {
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) return;
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/notifications/mark-all-read`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        onCountChange?.(0);
-      }
+      await adminApiFetch('/admin/notifications/mark-all-read', { method: 'POST' });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      onCountChange?.(0);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
     }

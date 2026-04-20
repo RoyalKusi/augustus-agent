@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Settings, TrendingUp, Users, DollarSign, Calendar, Save, AlertCircle, Sparkles, Info, CheckCircle2, XCircle } from 'lucide-react';
+import { adminApiFetch } from '../api';
 
 interface CommissionSettings {
   commissionPercentage: number;
@@ -30,17 +31,12 @@ export default function ReferralCommission() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) { setError('Authentication required'); return; }
-      const settingsRes = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!settingsRes.ok) throw new Error('Failed to fetch settings');
-      const settingsData = await settingsRes.json();
+      const settingsData = await adminApiFetch<CommissionSettings>('/admin/referral-commission/settings');
       setSettings(settingsData);
       setCommissionPercentage(settingsData.commissionPercentage);
       setEarningsPeriodMonths(settingsData.earningsPeriodMonths);
-      const statsRes = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/system-stats`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!statsRes.ok) throw new Error('Failed to fetch statistics');
-      setStats(await statsRes.json());
+      const statsData = await adminApiFetch<SystemStats>('/admin/referral-commission/system-stats');
+      setStats(statsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -51,15 +47,11 @@ export default function ReferralCommission() {
   const handleSave = async () => {
     setSaving(true); setError(null); setSuccess(null);
     try {
-      const token = localStorage.getItem('augustus_operator_token');
-      if (!token) { setError('Authentication required'); return; }
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/referral-commission/settings`, {
+      const updated = await adminApiFetch<CommissionSettings>('/admin/referral-commission/settings', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ commissionPercentage, earningsPeriodMonths }),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to update settings'); }
-      setSettings(await res.json());
+      setSettings(updated);
       setSuccess('Settings updated successfully!');
       setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
