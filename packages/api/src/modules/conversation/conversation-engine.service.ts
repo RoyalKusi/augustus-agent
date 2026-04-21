@@ -543,14 +543,27 @@ export async function processInboundMessage(msg) {
           description: p.description ? String(p.description).slice(0, 60) : undefined,
         }));
 
-        const carouselResult = await sendMessage(businessId, {
+        // Attempt 1: send with images (mixed is fine — cards without images show text-only)
+        let carouselResult = await sendMessage(businessId, {
           type: 'carousel',
           to: customerWaNumber,
           products: carouselProducts,
         });
 
+        // Attempt 2: if failed and some products had images, retry without any images
+        // (handles case where one bad image URL causes the whole carousel to be rejected)
+        if (!carouselResult.success && carouselProducts.some(p => p.imageUrl)) {
+          console.warn('[ConversationEngine] Carousel with images failed, retrying without images:', carouselResult.errorMessage);
+          const productsNoImages = carouselProducts.map(p => ({ ...p, imageUrl: undefined }));
+          carouselResult = await sendMessage(businessId, {
+            type: 'carousel',
+            to: customerWaNumber,
+            products: productsNoImages,
+          });
+        }
+
         if (!carouselResult.success) {
-          console.error('[ConversationEngine] Carousel send failed:', carouselResult.errorMessage);
+          console.error('[ConversationEngine] Carousel send failed after retry:', carouselResult.errorMessage);
           // Fallback: plain text list
           const productList = carouselProducts.map((p, i) =>
             `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}`

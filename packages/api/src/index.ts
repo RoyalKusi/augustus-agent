@@ -191,8 +191,25 @@ const start = async () => {
             result = await sendMessage(businessId, { type: 'text', to, body: msg });
             break;
           }
+          case 'mixed': {
+            // Mixed: some products with images, some without
+            const prods = products.rows.slice(0, Math.min(4, products.rows.length)).map((p, i) => ({
+              ...makeProduct(p),
+              // Alternate: even index keeps image, odd index strips it
+              imageUrl: i % 2 === 0 ? makeProduct(p).imageUrl : undefined,
+            }));
+            description = `Sending ${prods.length} products MIXED (${prods.filter(p => p.imageUrl).length} with images, ${prods.filter(p => !p.imageUrl).length} without)`;
+            result = await sendMessage(businessId, { type: 'carousel', to, products: prods });
+            // If fails, retry without images
+            if (!result.success && prods.some(p => p.imageUrl)) {
+              const noImgProds = prods.map(p => ({ ...p, imageUrl: undefined }));
+              result = await sendMessage(businessId, { type: 'carousel', to, products: noImgProds });
+              (result as unknown as Record<string, unknown>)['retried'] = true;
+            }
+            break;
+          }
           default:
-            return reply.status(400).send({ error: `Unknown scenario: ${scenario}. Use: multi, single-image, single-noimage, images-fail, no-products, text-only` });
+            return reply.status(400).send({ error: `Unknown scenario: ${scenario}. Use: multi, single-image, single-noimage, images-fail, no-products, text-only, mixed` });
         }
 
         return reply.send({

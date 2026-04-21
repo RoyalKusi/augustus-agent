@@ -151,17 +151,17 @@ function buildQuickReplyPayload(msg: QuickReplyMessage): Record<string, unknown>
 /**
  * Product display for WhatsApp:
  * - 2–10 products: native horizontally scrollable carousel
- * - 1 product: image + quick reply button
+ *   - Cards with valid imageUrl get image headers
+ *   - Cards without imageUrl show text-only body (WhatsApp supports mixed)
+ * - 1 product: image (if available) + quick reply button, or text button if no image
  */
 function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
   const products = msg.products.slice(0, 10);
 
   if (products.length === 1) {
-    // Single product — image with caption + order button
     const p = products[0];
     const bodyText = `*${p.name}*\n${p.currency} ${p.price.toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
     if (p.imageUrl) {
-      // Image message — order button sent separately
       return {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
@@ -170,7 +170,6 @@ function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
         image: { link: p.imageUrl, caption: bodyText },
       };
     }
-    // No image — interactive button
     return {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -186,7 +185,8 @@ function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
     };
   }
 
-  // 2–10 products: native horizontally scrollable carousel
+  // 2–10 products: native carousel
+  // Mixed images are fine — cards without imageUrl simply show text-only body
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -210,7 +210,8 @@ function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
             },
           };
 
-          if (p.imageUrl) {
+          // Only add image header if URL exists and looks valid
+          if (p.imageUrl && p.imageUrl.startsWith('http')) {
             card['header'] = { type: 'image', image: { link: p.imageUrl } };
           }
 
