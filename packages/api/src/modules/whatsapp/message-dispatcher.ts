@@ -149,27 +149,42 @@ function buildQuickReplyPayload(msg: QuickReplyMessage): Record<string, unknown>
 }
 
 /**
+ * Placeholder image URL for products without images.
+ * Used to ensure consistent carousel card appearance when some products lack images.
+ * WhatsApp requires all carousel cards to have the same header type — if any card
+ * has an image header, all cards must have one.
+ */
+const PRODUCT_PLACEHOLDER_IMAGE = 'https://placehold.co/400x400/e2e8f0/718096/png?text=No+Image';
+
+/**
  * Product display for WhatsApp:
  * - 2–10 products: native horizontally scrollable carousel
- *   - Cards with valid imageUrl get image headers
- *   - Cards without imageUrl show text-only body (WhatsApp supports mixed)
- * - 1 product: image (if available) + quick reply button, or text button if no image
+ *   - Products with images use their own image
+ *   - Products WITHOUT images use a placeholder so all cards look consistent
+ * - 1 product: image (own or placeholder) + quick reply button
  */
 function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
   const products = msg.products.slice(0, 10);
 
+  // Check if ANY product has an image — if so, all cards need an image header
+  // (WhatsApp requires consistent header types across carousel cards)
+  const anyHasImage = products.some(p => p.imageUrl && p.imageUrl.startsWith('http'));
+
   if (products.length === 1) {
     const p = products[0];
+    const imageUrl = p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : (anyHasImage ? PRODUCT_PLACEHOLDER_IMAGE : undefined);
     const bodyText = `*${p.name}*\n${p.currency} ${p.price.toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
-    if (p.imageUrl) {
+
+    if (imageUrl) {
       return {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: msg.to,
         type: 'image',
-        image: { link: p.imageUrl, caption: bodyText },
+        image: { link: imageUrl, caption: bodyText },
       };
     }
+    // No images at all — interactive button only
     return {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -186,7 +201,6 @@ function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
   }
 
   // 2–10 products: native carousel
-  // Mixed images are fine — cards without imageUrl simply show text-only body
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -210,9 +224,14 @@ function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
             },
           };
 
-          // Only add image header if URL exists and looks valid
-          if (p.imageUrl && p.imageUrl.startsWith('http')) {
-            card['header'] = { type: 'image', image: { link: p.imageUrl } };
+          // Use product image if available, otherwise placeholder if any product has an image
+          // (ensures consistent card appearance across the carousel)
+          const imageUrl = p.imageUrl && p.imageUrl.startsWith('http')
+            ? p.imageUrl
+            : anyHasImage ? PRODUCT_PLACEHOLDER_IMAGE : undefined;
+
+          if (imageUrl) {
+            card['header'] = { type: 'image', image: { link: imageUrl } };
           }
 
           return card;

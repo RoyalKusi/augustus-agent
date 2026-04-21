@@ -550,15 +550,19 @@ export async function processInboundMessage(msg) {
           products: carouselProducts,
         });
 
-        // Attempt 2: if failed and some products had images, retry without any images
-        // (handles case where one bad image URL causes the whole carousel to be rejected)
+        // Attempt 2: if failed and some products had images, retry with placeholder images
+        // replacing any missing/broken image URLs so all cards are consistent
         if (!carouselResult.success && carouselProducts.some(p => p.imageUrl)) {
-          console.warn('[ConversationEngine] Carousel with images failed, retrying without images:', carouselResult.errorMessage);
-          const productsNoImages = carouselProducts.map(p => ({ ...p, imageUrl: undefined }));
+          console.warn('[ConversationEngine] Carousel failed, retrying with placeholder images:', carouselResult.errorMessage);
+          const PLACEHOLDER = 'https://placehold.co/400x400/e2e8f0/718096/png?text=No+Image';
+          const productsWithPlaceholders = carouselProducts.map(p => ({
+            ...p,
+            imageUrl: p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : PLACEHOLDER,
+          }));
           carouselResult = await sendMessage(businessId, {
             type: 'carousel',
             to: customerWaNumber,
-            products: productsNoImages,
+            products: productsWithPlaceholders,
           });
         }
 
