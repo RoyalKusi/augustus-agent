@@ -17,6 +17,57 @@ interface Message {
   createdAt: string;
 }
 
+// Detect if a message contains a product listing (numbered list with prices)
+function parseProductList(text: string): Array<{ name: string; price: string }> | null {
+  const lines = text.split('\n').filter(l => l.trim());
+  const productLines = lines.filter(l => /^\d+\.\s+.+\s+[A-Z]{3}\s+[\d.]+/.test(l) || /^\d+\.\s+\*?.+\*?\s+—\s+[A-Z]{3}/.test(l));
+  if (productLines.length < 2) return null;
+  return productLines.map(l => {
+    const match = l.match(/^\d+\.\s+\*?([^*\n—]+)\*?\s*(?:—\s*)?([A-Z]{3}\s+[\d.]+)/);
+    return match ? { name: match[1].trim(), price: match[2].trim() } : { name: l.replace(/^\d+\.\s+/, ''), price: '' };
+  });
+}
+
+function MessageBubble({ msg }: { msg: Message }) {
+  const isOut = msg.direction === 'outbound';
+  const products = isOut ? parseProductList(msg.content) : null;
+  const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  if (products && products.length >= 2) {
+    // Render as product pill cards
+    const headerText = msg.content.split('\n')[0].replace(/[*_]/g, '');
+    return (
+      <div style={{ maxWidth: 280 }}>
+        <div style={{ background: '#ebf8ff', borderRadius: '12px 12px 2px 12px', padding: '10px 12px', marginBottom: 6 }}>
+          <div style={{ fontSize: 13, color: '#2b6cb0', fontWeight: 600, marginBottom: 8 }}>{headerText}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {products.map((p, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', borderRadius: 8, padding: '6px 10px', border: '1px solid #bee3f8' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#2d3748' }}>{p.name}</span>
+                {p.price && <span style={{ fontSize: 12, color: '#3182ce', fontWeight: 700, marginLeft: 8, whiteSpace: 'nowrap' }}>{p.price}</span>}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#90cdf4', marginTop: 6, textAlign: 'right' }}>{time}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Standard bubble
+  return (
+    <div style={{
+      padding: '8px 12px',
+      borderRadius: isOut ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+      background: isOut ? '#3182ce' : '#edf2f7',
+      color: isOut ? '#fff' : '#2d3748',
+    }}>
+      <div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+      <div style={{ fontSize: 11, color: isOut ? 'rgba(255,255,255,0.7)' : '#a0aec0', marginTop: 2 }}>{time}</div>
+    </div>
+  );
+}
+
 const AGENT_ID = 'dashboard-agent';
 
 const LEAD_LABELS = [
@@ -227,11 +278,8 @@ export default function Conversations() {
                 ) : (
                   convMessages[conv.id]!.map(msg => (
                     <div key={msg.id} style={{ display: 'flex', justifyContent: msg.direction === 'outbound' ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                      <div style={{ maxWidth: '72%', padding: '8px 12px', borderRadius: msg.direction === 'outbound' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', background: msg.direction === 'outbound' ? '#3182ce' : '#edf2f7', color: msg.direction === 'outbound' ? '#fff' : '#2d3748' }}>
-                        <div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                        <div style={{ fontSize: 11, color: msg.direction === 'outbound' ? 'rgba(255,255,255,0.7)' : '#a0aec0', marginTop: 2 }}>
-                          {new Date(msg.createdAt).toLocaleTimeString()}
-                        </div>
+                      <div style={{ maxWidth: '80%' }}>
+                        <MessageBubble msg={msg} />
                       </div>
                     </div>
                   ))

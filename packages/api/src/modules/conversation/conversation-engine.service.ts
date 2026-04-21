@@ -526,7 +526,6 @@ export async function processInboundMessage(msg) {
       }
 
       if (sortedProducts.length >= 1) {
-        // Send products as interactive list/buttons (works without templates)
         const carouselProducts = sortedProducts.slice(0, 10).map((p) => ({
           id: p.id,
           name: p.name,
@@ -535,18 +534,29 @@ export async function processInboundMessage(msg) {
           imageUrl: p.image_urls?.[0] ?? undefined,
           description: p.description ? String(p.description).slice(0, 60) : undefined,
         }));
+
         const carouselResult = await sendMessage(businessId, {
           type: 'carousel',
           to: customerWaNumber,
           products: carouselProducts,
         });
+
         if (!carouselResult.success) {
           console.error('[ConversationEngine] Carousel send failed:', carouselResult.errorMessage);
-          // Fallback: send as plain text list
+          // Fallback: plain text list
           const productList = carouselProducts.map((p, i) =>
             `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}`
           ).join('\n');
           await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: `Here are our products:\n\n${productList}\n\nReply with the product name to order.` });
+        } else if (carouselProducts.length === 1) {
+          // Single product: send order button separately after the image
+          const p = carouselProducts[0];
+          await sendMessage(businessId, {
+            type: 'quick_reply',
+            to: customerWaNumber,
+            body: `Would you like to order *${p.name}*?`,
+            buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+          });
         }
       }
     }
