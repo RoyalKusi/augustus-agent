@@ -89,6 +89,122 @@ const start = async () => {
         return reply.send({ conversationId: id, count: msgs.rows.length, messages: msgs.rows });
       } catch (err) { return reply.status(500).send({ error: String(err) }); }
     });
+
+    // Test carousel sending — all scenarios
+    // GET /diag/test-carousel?businessId=X&to=PHONE&scenario=multi|single-image|single-noimage|no-products|images-fail
+    app.get('/diag/test-carousel', async (req, reply) => {
+      const { businessId, to, scenario = 'multi' } = req.query as { businessId?: string; to?: string; scenario?: string };
+      if (!businessId || !to) return reply.status(400).send({ error: 'businessId and to are required' });
+
+      try {
+        const { sendMessage } = await import('./modules/whatsapp/message-dispatcher.js');
+
+        // Fetch real products for this business
+        const products = await pool.query(
+          `SELECT id, name, price, currency, image_urls, description FROM products WHERE business_id = $1 AND is_active = TRUE AND stock_quantity > 0 ORDER BY name LIMIT 10`,
+          [businessId]
+        );
+
+        if (products.rows.length === 0) {
+          return reply.send({ scenario, result: 'no_products', message: 'No active products found for this business' });
+        }
+
+        const makeProduct = (p: Record<string, unknown>) => ({
+          id: String(p.id),
+          name: String(p.name),
+          price: Number(p.price),
+          currency: String(p.currency),
+          imageUrl: (p.image_urls as string[])?.[0] ?? undefined,
+          description: p.description ? String(p.description).slice(0, 60) : undefined,
+        });
+
+        let result;
+        let description = '';
+
+        switch (scenario) {
+          case 'multi': {
+            // 2-10 products with images — native carousel
+            const prods = products.rows.slice(0, Math.min(10, products.rows.length)).map(makeProduct);
+            description = `Sending ${prods.length} products as native carousel`;
+            result = await sendMessage(businessId, { type: 'carousel', to, products: prods });
+            break;
+          }
+          case 'single-image': {
+            // 1 product with image
+            const p = makeProduct(products.rows[0]);
+            description = `Sending 1 product (${p.name}) with image: ${p.imageUrl ?? 'none'}`;
+            result = await sendMessage(businessId, { type: 'carousel', to, products: [p] });
+            if (result.success) {
+              // Send order button separately
+              await sendMessage(businessId, {
+                type: 'quick_reply', to,
+                body: `Would you like to order *${p.name}*?`,
+                buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+              });
+            }
+            break;
+          }
+          case 'single-noimage': {
+            // 1 product without image — force no image
+            const p = { ...makeProduct(products.rows[0]), imageUrl: undefined };
+            description = `Sending 1 product (${p.name}) WITHOUT image`;
+            result = await sendMessage(businessId, { type: 'carousel', to, products: [p] });
+            if (result.success) {
+              await sendMessage(businessId, {
+                type: 'quick_reply', to,
+                body: `Would you like to order *${p.name}*?`,
+                buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+              });
+            }
+            break;
+          }
+          case 'images-fail': {
+            // Simulate image failure — use broken image URLs
+            const prods = products.rows.slice(0, Math.min(3, products.rows.length)).map(p => ({
+              ...makeProduct(p),
+              imageUrl: 'https://broken-url-that-does-not-exist.example.com/image.jpg',
+            }));
+            description = `Sending ${prods.length} products with BROKEN image URLs`;
+            result = await sendMessage(businessId, { type: 'carousel', to, products: prods });
+            if (!result.success) {
+              // Fallback to text list
+              const list = prods.map((p, i) => `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}`).join('\n');
+              const fallback = `Here are our products (images are temporarily unavailable, sorry about that!):\n\n${list}\n\nJust reply with the name of what you'd like to order 👆`;
+              await sendMessage(businessId, { type: 'text', to, body: fallback });
+              result = { success: true, fallback: true, message: 'Sent as text fallback' };
+            }
+            break;
+          }
+          case 'no-products': {
+            // Simulate no products available
+            description = 'Simulating no products available scenario';
+            const msg = "I'm sorry, those items appear to be out of stock right now. Let me know if you'd like to see what else we have available.";
+            result = await sendMessage(businessId, { type: 'text', to, body: msg });
+            break;
+          }
+          case 'text-only': {
+            // All products without images — text list
+            const prods = products.rows.slice(0, 5).map(p => ({ ...makeProduct(p), imageUrl: undefined }));
+            const list = prods.map((p, i) => `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}${p.description ? '\n   ' + p.description : ''}`).join('\n\n');
+            const msg = `Here are our available products:\n\n${list}\n\nJust reply with the name of what you'd like to order 👆`;
+            description = `Sending ${prods.length} products as plain text (no images)`;
+            result = await sendMessage(businessId, { type: 'text', to, body: msg });
+            break;
+          }
+          default:
+            return reply.status(400).send({ error: `Unknown scenario: ${scenario}. Use: multi, single-image, single-noimage, images-fail, no-products, text-only` });
+        }
+
+        return reply.send({
+          scenario,
+          description,
+          productCount: products.rows.length,
+          result,
+        });
+      } catch (err) {
+        return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+      }
+    });
     app.get('/health/paths', async () => {
       const businessDist = join(__dirname, '../../business-dashboard/dist');
       const adminDist = join(__dirname, '../../admin-dashboard/dist');
