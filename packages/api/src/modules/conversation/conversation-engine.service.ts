@@ -548,15 +548,35 @@ export async function processInboundMessage(msg) {
             `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}`
           ).join('\n');
           await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: `Here are our products:\n\n${productList}\n\nReply with the product name to order.` });
-        } else if (carouselProducts.length === 1) {
-          // Single product: send order button separately after the image
-          const p = carouselProducts[0];
-          await sendMessage(businessId, {
-            type: 'quick_reply',
-            to: customerWaNumber,
-            body: `Would you like to order *${p.name}*?`,
-            buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
-          });
+          // Persist the fallback text
+          await pool.query(
+            "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
+            [conversationId, businessId, `Here are our products:\n\n${productList}\n\nReply with the product name to order.`]
+          );
+        } else {
+          // Persist a product listing message so the in-app chatbox shows it
+          const productSummary = carouselProducts.map((p, i) =>
+            `${i + 1}. ${p.name} — ${p.currency} ${p.price.toFixed(2)}`
+          ).join('\n');
+          const carouselText = `📦 Products shown:\n${productSummary}`;
+          await pool.query(
+            "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
+            [conversationId, businessId, carouselText]
+          );
+          await pool.query(
+            'UPDATE conversations SET message_count = message_count + 1, updated_at = NOW() WHERE id = $1',
+            [conversationId]
+          );
+          if (carouselProducts.length === 1) {
+            // Single product: send order button separately after the image
+            const p = carouselProducts[0];
+            await sendMessage(businessId, {
+              type: 'quick_reply',
+              to: customerWaNumber,
+              body: `Would you like to order *${p.name}*?`,
+              buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
+            });
+          }
         }
       }
     }
