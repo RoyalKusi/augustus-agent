@@ -149,91 +149,65 @@ function buildQuickReplyPayload(msg: QuickReplyMessage): Record<string, unknown>
 }
 
 /**
- * Native WhatsApp interactive carousel (horizontally scrollable cards).
- * Each card has: image header, body text (name + price + description),
- * and a quick-reply "Order Now" button.
- *
- * API format: interactive.type = "carousel"
- * Requires 2–10 cards. Cards without images fall back to text-only body.
- * Req 6.1 — each card shows product name, price, and an order button.
- * Req 6.2 — 1–10 products enforced before calling this function.
+ * Product display: sends products as a list message (interactive list).
+ * This works without WhatsApp templates and is universally supported.
+ * For 1-3 products: quick reply buttons. For 4-10: list message.
  */
 function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
-  const cards = msg.products.map((p, index) => {
-    const priceStr = `${p.currency} ${p.price.toFixed(2)}`;
-    const bodyText = p.description
-      ? `*${p.name}*\n${priceStr}\n${p.description.slice(0, 60)}`
-      : `*${p.name}*\n${priceStr}`;
+  const products = msg.products.slice(0, 10);
 
-    const card: Record<string, unknown> = {
-      card_index: index,
-      components: [
-        {
-          type: 'body',
-          parameters: [{ type: 'text', text: bodyText }],
+  if (products.length <= 3) {
+    // Use interactive button message for up to 3 products
+    const bodyLines = products.map((p, i) =>
+      `${i + 1}. *${p.name}*\n   ${p.currency} ${p.price.toFixed(2)}${p.description ? '\n   ' + p.description.slice(0, 50) : ''}`
+    ).join('\n\n');
+
+    return {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: msg.to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: `Here are our products 👇\n\n${bodyLines}` },
+        action: {
+          buttons: products.map((p) => ({
+            type: 'reply',
+            reply: {
+              id: `order_${p.id}`,
+              title: `🛒 ${p.name.slice(0, 20)}`,
+            },
+          })),
         },
-        {
-          type: 'button',
-          sub_type: 'quick_reply',
-          index: 0,
-          parameters: [{ type: 'payload', payload: `order_${p.id}` }],
-        },
-      ],
+      },
     };
+  }
 
-    if (p.imageUrl) {
-      card['header'] = {
-        type: 'image',
-        image: { link: p.imageUrl },
-      };
-    }
+  // Use interactive list message for 4-10 products
+  const bodyLines = products.map((p, i) =>
+    `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}`
+  ).join('\n');
 
-    return card;
-  });
-
-  // Native WhatsApp Cloud API carousel format
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
     to: msg.to,
     type: 'interactive',
     interactive: {
-      type: 'carousel',
-      body: {
-        text: 'Here are some options for you 👇',
-      },
+      type: 'list',
+      body: { text: `Here are our available products 👇\n\n${bodyLines}` },
       action: {
-        cards: msg.products.map((p, index) => {
-          const priceStr = `${p.currency} ${p.price.toFixed(2)}`;
-          const bodyText = p.description
-            ? `*${p.name}*\n${priceStr}\n${p.description.slice(0, 60)}`
-            : `*${p.name}*\n${priceStr}`;
-
-          const card: Record<string, unknown> = {
-            card_index: index,
-            body: { text: bodyText },
-            action: {
-              buttons: [
-                {
-                  type: 'reply',
-                  reply: {
-                    id: `order_${p.id}`,
-                    title: '🛒 Order Now',
-                  },
-                },
-              ],
-            },
-          };
-
-          if (p.imageUrl) {
-            card['header'] = {
-              type: 'image',
-              image: { link: p.imageUrl },
-            };
-          }
-
-          return card;
-        }),
+        button: 'View Products',
+        sections: [
+          {
+            title: 'Products',
+            rows: products.map((p) => ({
+              id: `order_${p.id}`,
+              title: p.name.slice(0, 24),
+              description: `${p.currency} ${p.price.toFixed(2)}${p.description ? ' — ' + p.description.slice(0, 50) : ''}`,
+            })),
+          },
+        ],
       },
     },
   };

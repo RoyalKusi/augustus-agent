@@ -525,8 +525,8 @@ export async function processInboundMessage(msg) {
         }
       }
 
-      if (sortedProducts.length >= 2) {
-        // Native horizontally scrollable carousel (2–10 cards)
+      if (sortedProducts.length >= 1) {
+        // Send products as interactive list/buttons (works without templates)
         const carouselProducts = sortedProducts.slice(0, 10).map((p) => ({
           id: p.id,
           name: p.name,
@@ -535,28 +535,19 @@ export async function processInboundMessage(msg) {
           imageUrl: p.image_urls?.[0] ?? undefined,
           description: p.description ? String(p.description).slice(0, 60) : undefined,
         }));
-        await sendMessage(businessId, {
+        const carouselResult = await sendMessage(businessId, {
           type: 'carousel',
           to: customerWaNumber,
           products: carouselProducts,
         });
-      } else {
-        // Truly only 1 product in the entire catalogue — image + quick reply
-        // (WhatsApp API rejects single-card carousels)
-        const p = sortedProducts[0];
-        const imageUrl = p.image_urls?.[0];
-        const productCaption = `*${p.name}*\n${p.currency} ${Number(p.price).toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
-        if (imageUrl) {
-          await sendMessage(businessId, { type: 'image', to: customerWaNumber, url: imageUrl, caption: productCaption });
-        } else {
-          await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: productCaption });
+        if (!carouselResult.success) {
+          console.error('[ConversationEngine] Carousel send failed:', carouselResult.errorMessage);
+          // Fallback: send as plain text list
+          const productList = carouselProducts.map((p, i) =>
+            `${i + 1}. *${p.name}* — ${p.currency} ${p.price.toFixed(2)}`
+          ).join('\n');
+          await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: `Here are our products:\n\n${productList}\n\nReply with the product name to order.` });
         }
-        await sendMessage(businessId, {
-          type: 'quick_reply',
-          to: customerWaNumber,
-          body: `Would you like to order ${p.name}?`,
-          buttons: [{ id: `order_${p.id}`, title: '🛒 Order Now' }],
-        });
       }
     }
   }
