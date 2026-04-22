@@ -226,14 +226,36 @@ export function parseClaudeResponse(responseText) {
     const text = responseText.replace(/CAROUSEL_TRIGGER:\[[^\]]*\]/, '').trim();
     return { type: 'carousel', text, products: productIds };
   }
-  // Non-greedy match to avoid consuming trailing text after the JSON object
-  const paymentMatch = responseText.match(/PAYMENT_TRIGGER:(\{[^}]*\})/);
-  if (paymentMatch) {
-    let orderDetails = {};
-    try { orderDetails = JSON.parse(paymentMatch[1]); } catch { return { type: 'text', text: responseText }; }
-    const text = responseText.replace(/PAYMENT_TRIGGER:\{[^}]*\}/, '').trim();
-    return { type: 'payment', text, orderDetails };
+
+  // Match PAYMENT_TRIGGER with nested JSON — find the matching closing brace
+  const paymentIdx = responseText.indexOf('PAYMENT_TRIGGER:{');
+  if (paymentIdx !== -1) {
+    const jsonStart = paymentIdx + 'PAYMENT_TRIGGER:'.length;
+    let depth = 0;
+    let jsonEnd = -1;
+    for (let i = jsonStart; i < responseText.length; i++) {
+      if (responseText[i] === '{') depth++;
+      else if (responseText[i] === '}') {
+        depth--;
+        if (depth === 0) { jsonEnd = i + 1; break; }
+      }
+    }
+    if (jsonEnd !== -1) {
+      const jsonStr = responseText.slice(jsonStart, jsonEnd);
+      let orderDetails = {};
+      try {
+        orderDetails = JSON.parse(jsonStr);
+      } catch {
+        // JSON parse failed — treat as plain text but strip the trigger
+        const cleaned = responseText.slice(0, paymentIdx).trim() + responseText.slice(jsonEnd).trim();
+        return { type: 'text', text: cleaned || responseText };
+      }
+      // Strip the trigger from the conversational text
+      const text = (responseText.slice(0, paymentIdx) + responseText.slice(jsonEnd)).trim();
+      return { type: 'payment', text, orderDetails };
+    }
   }
+
   return { type: 'text', text: responseText };
 }
 
@@ -487,9 +509,15 @@ export async function processInboundMessage(msg) {
   // If Claude returned ONLY a trigger with no surrounding text, don't fall back to the raw response.
   const outboundText = action.text?.trim() || (action.type === 'text' ? claudeResponse.text : '');
 
+  // Safety: strip any raw trigger syntax that leaked into the outbound text
+  const cleanOutboundText = outboundText
+    .replace(/PAYMENT_TRIGGER:\{[^}]*(?:\{[^}]*\}[^}]*)?\}/g, '')
+    .replace(/CAROUSEL_TRIGGER:\[[^\]]*\]/g, '')
+    .trim();
+
   // Always send the conversational text response first
-  if (outboundText) {
-    await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: outboundText });
+  if (cleanOutboundText) {
+    await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: cleanOutboundText });
   }
 
   // Dispatch carousel if Claude triggered one
@@ -808,7 +836,7 @@ export async function processInboundMessage(msg) {
 
   // Persist and record cost in background � don't block the response
   void Promise.all([
-    persistConversationTurn(conversationId, businessId, messageText, outboundText, messageId, timestamp),
+    persistConversationTurn(conversationId, businessId, messageText, cleanOutboundText, messageId, timestamp),
     getBusinessEmail(businessId).then(email => recordInferenceCost(businessId, costUsd, email)),
   ]);
   return { dispatched: true, action };
