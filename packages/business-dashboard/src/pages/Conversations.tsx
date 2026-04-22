@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import type React from 'react';
 
 interface Conversation {
   id: string;
@@ -28,9 +29,54 @@ function parseProductList(text: string): Array<{ name: string; price: string }> 
   });
 }
 
+// Detect invoice/order confirmation messages
+function isInvoiceMessage(text: string): boolean {
+  return text.includes('INVOICE') || text.includes('Order Placed!') || text.includes('Order Reference:') || text.includes('Payment Confirmed');
+}
+
+// Render WhatsApp markdown: *bold*, _italic_, strip ━━━ separators
+function renderWhatsAppMarkdown(text: string): React.ReactNode[] {
+  const lines = text.split('\n');
+  return lines.map((line, i) => {
+    // Skip separator lines
+    if (/^━+$/.test(line.trim())) {
+      return <hr key={i} style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.2)', margin: '4px 0' }} />;
+    }
+
+    // Parse inline *bold* and _italic_
+    const parts: React.ReactNode[] = [];
+    let remaining = line;
+    let key = 0;
+
+    while (remaining.length > 0) {
+      const boldMatch = remaining.match(/\*([^*]+)\*/);
+      const italicMatch = remaining.match(/_([^_]+)_/);
+
+      const boldIdx = boldMatch ? remaining.indexOf(boldMatch[0]) : Infinity;
+      const italicIdx = italicMatch ? remaining.indexOf(italicMatch[0]) : Infinity;
+
+      if (boldMatch && boldIdx <= italicIdx) {
+        if (boldIdx > 0) parts.push(<span key={key++}>{remaining.slice(0, boldIdx)}</span>);
+        parts.push(<strong key={key++} style={{ fontWeight: 700 }}>{boldMatch[1]}</strong>);
+        remaining = remaining.slice(boldIdx + boldMatch[0].length);
+      } else if (italicMatch && italicIdx < Infinity) {
+        if (italicIdx > 0) parts.push(<span key={key++}>{remaining.slice(0, italicIdx)}</span>);
+        parts.push(<em key={key++}>{italicMatch[1]}</em>);
+        remaining = remaining.slice(italicIdx + italicMatch[0].length);
+      } else {
+        parts.push(<span key={key++}>{remaining}</span>);
+        break;
+      }
+    }
+
+    return <div key={i} style={{ minHeight: line.trim() === '' ? 6 : undefined }}>{parts}</div>;
+  });
+}
+
 function MessageBubble({ msg }: { msg: Message }) {
   const isOut = msg.direction === 'outbound';
   const products = isOut ? parseProductList(msg.content) : null;
+  const isInvoice = isOut && isInvoiceMessage(msg.content);
   const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   if (products && products.length >= 2) {
@@ -54,15 +100,35 @@ function MessageBubble({ msg }: { msg: Message }) {
     );
   }
 
-  // Standard bubble
+  if (isInvoice) {
+    // Render invoice/order confirmation as a clean formatted card
+    return (
+      <div style={{ maxWidth: 300, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px 12px 2px 12px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        <div style={{ background: 'linear-gradient(135deg, #2563eb, #4f46e5)', padding: '10px 14px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+            {msg.content.includes('INVOICE') ? '🧾 Invoice' : msg.content.includes('Payment Confirmed') ? '✅ Payment Confirmed' : '🛒 Order Placed'}
+          </div>
+        </div>
+        <div style={{ padding: '10px 14px', fontSize: 13, color: '#2d3748', lineHeight: 1.6 }}>
+          {renderWhatsAppMarkdown(msg.content)}
+        </div>
+        <div style={{ padding: '4px 14px 8px', fontSize: 10, color: '#a0aec0', textAlign: 'right' }}>{time}</div>
+      </div>
+    );
+  }
+
+  // Standard bubble with WhatsApp markdown rendering
   return (
     <div style={{
       padding: '8px 12px',
       borderRadius: isOut ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
       background: isOut ? '#3182ce' : '#edf2f7',
       color: isOut ? '#fff' : '#2d3748',
+      maxWidth: 280,
     }}>
-      <div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+      <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+        {renderWhatsAppMarkdown(msg.content)}
+      </div>
       <div style={{ fontSize: 11, color: isOut ? 'rgba(255,255,255,0.7)' : '#a0aec0', marginTop: 2 }}>{time}</div>
     </div>
   );
