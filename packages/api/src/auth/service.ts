@@ -1,5 +1,5 @@
 import { pool } from '../db/client.js';
-import { sendEmail } from '../notifications/email.js';
+import { sendEmail } from '../modules/notification/notification.service.js';
 import { validatePassword, hashPassword, verifyPassword } from './password.js';
 import {
   generateEmailVerificationToken,
@@ -57,10 +57,19 @@ export class AuthService {
 
     const token = generateEmailVerificationToken();
     await storeEmailVerificationToken(businessId, token);
+
+    // Import config for frontend URL
+    const { config } = await import('../config.js');
+    const verifyUrl = `${config.frontendUrl}/verify-email?token=${token}`;
+
     await sendEmail(
       email,
       'Verify your Augustus account',
-      `<p>Click <a href="https://app.augustus.ai/verify-email?token=${token}">here</a> to verify your email.</p>`,
+      `<p>Welcome to Augustus! Click the link below to verify your email address and activate your account.</p>
+       <p><a href="${verifyUrl}" style="background:#3182ce;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Verify Email</a></p>
+       <p>Or copy this link: ${verifyUrl}</p>
+       <p>This link expires in 24 hours.</p>`,
+      `Welcome to Augustus! Verify your email: ${verifyUrl}\n\nThis link expires in 24 hours.`,
     );
 
     return { businessId };
@@ -130,10 +139,18 @@ export class AuthService {
     const businessId = result.rows[0].id;
     const token = generatePasswordResetToken();
     await storePasswordResetToken(businessId, token);
+
+    const { config } = await import('../config.js');
+    const resetUrl = `${config.frontendUrl}/reset-password?token=${token}`;
+
     await sendEmail(
       email,
       'Reset your Augustus password',
-      `<p>Click <a href="https://app.augustus.ai/reset-password?token=${token}">here</a> to reset your password. Link expires in 60 minutes.</p>`,
+      `<p>You requested a password reset for your Augustus account.</p>
+       <p><a href="${resetUrl}" style="background:#3182ce;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Reset Password</a></p>
+       <p>Or copy this link: ${resetUrl}</p>
+       <p>This link expires in 60 minutes. If you didn't request this, ignore this email.</p>`,
+      `Reset your Augustus password: ${resetUrl}\n\nExpires in 60 minutes.`,
     );
   }
 
