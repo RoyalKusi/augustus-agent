@@ -103,6 +103,40 @@ export default function WhatsAppSetup() {
     }
   }
 
+  // Listen for Meta's postMessage when embedded signup completes in a popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Only accept messages from Meta domains
+      if (!event.origin.includes('facebook.com') && !event.origin.includes('meta.com')) return;
+
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+
+        // Meta sends this when embedded signup is complete
+        if (data?.type === 'WA_EMBEDDED_SIGNUP') {
+          if (data.event === 'FINISH' || data.event === 'SUBMIT') {
+            const code = data.data?.code;
+            if (code) {
+              setLoading(true);
+              setError('');
+              setMsg('Completing WhatsApp connection…');
+              exchangeCode(code);
+            }
+          } else if (data.event === 'CANCEL') {
+            setError('WhatsApp setup was cancelled. Please try again.');
+          } else if (data.event === 'ERROR') {
+            setError(`WhatsApp setup error: ${data.data?.error_message ?? 'Unknown error'}`);
+          }
+        }
+      } catch {
+        // Ignore non-JSON messages
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   const exchangeCode = (code: string) => {
     apiFetch<Integration & {
       webhookStatus: string;
@@ -121,32 +155,49 @@ export default function WhatsAppSetup() {
       const webhookOk = result.webhookStatus === 'active';
 
       if (regOk && webhookOk) {
-        setMsg(`✅ Connected: ${result.displayPhoneNumber} (${result.verifiedName}) — ready to send and receive messages.`);
+        setMsg(`✅ WhatsApp connected! ${result.displayPhoneNumber ?? ''} ${result.verifiedName ? `(${result.verifiedName})` : ''} — your AI agent is ready.`);
       } else if (regOk && !webhookOk) {
-        setMsg(`Connected: ${result.displayPhoneNumber} — registered for Cloud API. Webhook pending: ${result.webhookError ?? 'retry using Register Webhook button.'}`);
+        setMsg(`⚠️ Connected but webhook pending. Click "Register Webhook" to activate.`);
       } else if (!regOk) {
-        setError(result.registrationError ?? 'Phone number registration failed. Please delete the WhatsApp account on the device using this number, wait 3 minutes, then reconnect.');
+        setError(result.registrationError ?? 'Phone number registration failed. If this number is active on WhatsApp, remove it from the WhatsApp app first, wait 3 minutes, then reconnect.');
       }
     }).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : 'Connection failed.');
-    }).finally(() => setLoading(false));
+      setError(err instanceof Error ? err.message : 'Connection failed. Please try again.');
+    }).finally(() => {
+      setLoading(false);
+      setMsg(prev => prev === 'Completing WhatsApp connection…' ? '' : prev);
+    });
   };
 
   const handleEmbeddedSignup = () => {
     if (!window.FB) { setError('Facebook SDK not loaded. Please refresh and try again.'); return; }
     if (!sdkConfig) { setError('WhatsApp config not loaded. Please refresh and try again.'); return; }
     setError(''); setMsg('');
-    const returnUrl = `${window.location.origin}${window.location.pathname}`;
+
+    // Open Meta's embedded signup — it uses a popup internally
+    // The postMessage listener above will handle the completion event
     window.FB.login((response) => {
       const code = response.authResponse?.code;
-      if (!code) { if (response.status !== 'unknown') setError('Connection was cancelled or failed.'); return; }
-      setLoading(true);
-      exchangeCode(code);
+      if (code) {
+        setLoading(true);
+        setMsg('Completing WhatsApp connection…');
+        exchangeCode(code);
+      } else if (response.status === 'connected') {
+        // Already connected — refresh integration status
+        apiFetch<Integration>('/whatsapp/integration').then(setIntegration).catch(() => {});
+      } else if (response.status !== 'unknown') {
+        setError('Connection was cancelled or failed. Please try again.');
+      }
     }, {
       config_id: sdkConfig.configId,
       response_type: 'code',
       override_default_response_type: true,
-      extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding', sessionInfoVersion: '3', return_url: returnUrl },
+      extras: {
+        setup: {},
+        featureType: 'whatsapp_business_app_onboarding',
+        sessionInfoVersion: '3',
+        return_url: `${window.location.origin}${window.location.pathname}`,
+      },
     });
   };
 
@@ -248,6 +299,18 @@ export default function WhatsAppSetup() {
 
   return (
     <div style={pageStyle}>
+      {/* Loading overlay while connecting */}
+      {loading && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+          <div style={{ width: 48, height: 48, border: '4px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <p style={{ color: '#fff', fontSize: 16, fontWeight: 600, margin: 0 }}>
+            {msg === 'Completing WhatsApp connection…' ? 'Connecting WhatsApp…' : 'Processing…'}
+          </p>
+          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, margin: 0 }}>Please wait, do not close this page</p>
+        </div>
+      )}
+
       <h2 style={{ marginBottom: 4 }}>WhatsApp Integration</h2>
       <p style={{ color: '#718096', marginBottom: 24, fontSize: 14 }}>
         Connect your WhatsApp Business number so the AI agent can send and receive messages.
