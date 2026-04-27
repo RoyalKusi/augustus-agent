@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { apiFetch } from '../api';
 
 export default function Register() {
   const [searchParams] = useSearchParams();
@@ -26,7 +25,16 @@ export default function Register() {
     try {
       const body: Record<string, string> = { ...form };
       if (refCode) body.referralCode = refCode;
-      await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify(body) });
+      // Use plain fetch — registration doesn't require auth token
+      const res = await fetch('/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `Registration failed (${res.status})`);
+      }
       setSuccess(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed');

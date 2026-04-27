@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { apiFetch } from '../api';
 
 export default function ResetPassword() {
   const [params] = useSearchParams();
@@ -13,17 +12,19 @@ export default function ResetPassword() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password !== confirm) {
-      setError('Passwords do not match.');
-      return;
-    }
+    if (password !== confirm) { setError('Passwords do not match.'); return; }
     setError('');
     setLoading(true);
     try {
-      await apiFetch('/auth/reset-password', {
+      const res = await fetch('/auth/reset-password', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, newPassword: password }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? 'Reset failed');
+      }
       navigate('/login', { state: { message: 'Password reset successfully. Please log in.' } });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Reset failed.');
@@ -47,22 +48,9 @@ export default function ResetPassword() {
       {error && <p style={{ color: '#c53030' }}>{error}</p>}
       <form onSubmit={submit} style={formStyle}>
         <label>New Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={inputStyle}
-          placeholder="Min 8 chars, upper, lower, digit"
-        />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inputStyle} placeholder="Min 8 chars, upper, lower, digit" />
         <label>Confirm Password</label>
-        <input
-          type="password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          required
-          style={inputStyle}
-        />
+        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required style={inputStyle} />
         <button type="submit" disabled={loading} style={btnStyle}>
           {loading ? 'Resetting…' : 'Reset Password'}
         </button>

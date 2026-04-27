@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiFetch } from '../api';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -13,10 +12,15 @@ export default function ForgotPassword() {
     setError('');
     setLoading(true);
     try {
-      await apiFetch('/auth/request-password-reset', {
+      const res = await fetch('/auth/request-password-reset', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? 'Request failed');
+      }
       setSuccess(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Request failed');
@@ -46,27 +50,12 @@ export default function ForgotPassword() {
           {loading ? 'Sending…' : 'Send reset link'}
         </button>
       </form>
-      <p>
-        <Link to="/login">Back to login</Link>
-      </p>
+      <p><Link to="/login">Back to login</Link></p>
     </div>
   );
 }
 
-const containerStyle: React.CSSProperties = {
-  maxWidth: 400,
-  margin: '60px auto',
-  padding: 24,
-  fontFamily: 'sans-serif',
-};
+const containerStyle: React.CSSProperties = { maxWidth: 400, margin: '60px auto', padding: 24, fontFamily: 'sans-serif' };
 const formStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8 };
 const inputStyle: React.CSSProperties = { padding: '8px', fontSize: 14, borderRadius: 4, border: '1px solid #ccc' };
-const btnStyle: React.CSSProperties = {
-  padding: '10px',
-  background: '#3182ce',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontSize: 14,
-};
+const btnStyle: React.CSSProperties = { padding: '10px', background: '#3182ce', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14 };
