@@ -287,8 +287,10 @@ const start = async () => {
         });
 
         // SPA fallback: serve index.html for all browser navigations to non-API paths
-        // API paths are handled by their own registered routes above
-        const apiPrefixes = ['/auth/', '/dashboard/', '/whatsapp/', '/payments/', '/conversations/',
+        // API paths are handled by their own registered routes above.
+        // IMPORTANT: Only list prefixes that are PURELY API (never browser-navigable SPA routes).
+        // /dashboard/ is used by both API and SPA — don't block it here.
+        const apiPrefixes = ['/auth/', '/whatsapp/', '/payments/', '/conversations/',
           '/webhooks/', '/admin/', '/catalogue/', '/training/', '/subscription/', '/health', '/legal/', '/diag/'];
 
         app.setNotFoundHandler((req, reply) => {
@@ -298,7 +300,7 @@ const start = async () => {
           if (isApiPath) {
             return reply.status(404).send({ error: 'Not found' });
           }
-          // For all other GET requests (SPA routes), serve index.html
+          // For all other GET requests (SPA routes including /dashboard/*), serve index.html
           if (req.method === 'GET') {
             return reply.type('text/html').send(indexHtml);
           }
