@@ -56,17 +56,49 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   });
   app.post('/webhooks/test-send', async (request, reply) => {
     try {
-      const { to, message } = request.body as { to?: string; message?: string };
+      const { to, message, businessId: reqBusinessId } = request.body as { to?: string; message?: string; businessId?: string };
       if (!to || !message) return reply.status(400).send({ error: 'to and message required' });
       const { pool } = await import('../../db/client.js');
-      const integration = await pool.query<{ business_id: string }>(
-        `SELECT business_id FROM whatsapp_integrations WHERE status = 'active' LIMIT 1`
-      );
-      if (!integration.rows.length) return reply.status(404).send({ error: 'No active integration' });
-      const businessId = integration.rows[0].business_id;
+
+      // Use provided businessId or find first active integration
+      let businessId = reqBusinessId;
+      if (!businessId) {
+        const integration = await pool.query<{ business_id: string }>(
+          `SELECT business_id FROM whatsapp_integrations WHERE status = 'active' LIMIT 1`
+        );
+        if (!integration.rows.length) return reply.status(404).send({ error: 'No active integration' });
+        businessId = integration.rows[0].business_id;
+      }
+
       const { sendMessage } = await import('../whatsapp/message-dispatcher.js');
       const result = await sendMessage(businessId, { type: 'text', to, body: message });
       return reply.send({ businessId, result });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // POST /webhooks/sim-message — simulate an inbound message through the conversation engine
+  app.post('/webhooks/sim-message', async (request, reply) => {
+    try {
+      const { businessId, customerWaNumber, messageText } = request.body as {
+        businessId?: string;
+        customerWaNumber?: string;
+        messageText?: string;
+      };
+      if (!businessId || !customerWaNumber || !messageText) {
+        return reply.status(400).send({ error: 'businessId, customerWaNumber, messageText required' });
+      }
+      const { processInboundMessage } = await import('../conversation/conversation-engine.service.js');
+      const result = await processInboundMessage({
+        businessId,
+        customerWaNumber,
+        messageText,
+        messageId: `sim-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: Date.now(),
+        customerName: 'Sim Customer',
+      });
+      return reply.send({ success: true, result });
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
     }
