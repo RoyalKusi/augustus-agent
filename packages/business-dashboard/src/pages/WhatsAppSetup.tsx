@@ -47,6 +47,9 @@ export default function WhatsAppSetup() {
   const [notifNumber, setNotifNumber] = useState('');
   const [notifSaving, setNotifSaving] = useState(false);
   const [notifMsg, setNotifMsg] = useState('');
+  const [templates, setTemplates] = useState<Array<{ name: string; category: string; status: string }>>([]);
+  const [templateMsg, setTemplateMsg] = useState('');
+  const [templateLoading, setTemplateLoading] = useState(false);
   const sdkInitialised = useRef(false);
 
   useEffect(() => {
@@ -85,8 +88,56 @@ export default function WhatsAppSetup() {
       apiFetch<{ notificationWaNumber: string | null }>('/dashboard/notification-number')
         .then((r) => setNotifNumber(r.notificationWaNumber ?? ''))
         .catch(() => {}),
+      apiFetch<{ templates: Array<{ name: string; category: string; status: string }> }>('/whatsapp/templates')
+        .then((r) => setTemplates(r.templates ?? []))
+        .catch(() => {}),
     ]).finally(() => setPageLoading(false));
   }, []);
+
+  // Seed and auto-submit templates after successful WhatsApp connection
+  const seedAndSubmitTemplates = async () => {
+    try {
+      setTemplateMsg('Setting up message templates…');
+      // Seed platform templates
+      await apiFetch('/whatsapp/templates/seed', { method: 'POST' });
+      // Submit all pending templates to Meta
+      const result = await apiFetch<{ submitted: number; failed: number }>('/whatsapp/templates/submit-all', { method: 'POST' });
+      setTemplateMsg(`✅ ${result.submitted} message templates submitted to Meta for approval.`);
+      // Refresh template list
+      apiFetch<{ templates: Array<{ name: string; category: string; status: string }> }>('/whatsapp/templates')
+        .then((r) => setTemplates(r.templates ?? []))
+        .catch(() => {});
+    } catch {
+      setTemplateMsg('Templates seeded locally. Submit them for Meta approval below.');
+    }
+  };
+
+  const handleSeedAndSubmit = async () => {
+    setTemplateLoading(true);
+    setTemplateMsg('');
+    await seedAndSubmitTemplates();
+    setTemplateLoading(false);
+  };
+
+  const handleSyncTemplates = async () => {
+    setTemplateLoading(true);
+    setTemplateMsg('');
+    try {
+      const result = await apiFetch<{ synced: number; approved: number; rejected: number; error?: string }>('/whatsapp/templates/sync', { method: 'POST' });
+      if (result.error) {
+        setTemplateMsg(`⚠️ Sync error: ${result.error}`);
+      } else {
+        setTemplateMsg(`Synced ${result.synced} templates. ${result.approved} approved, ${result.rejected} rejected.`);
+      }
+      apiFetch<{ templates: Array<{ name: string; category: string; status: string }> }>('/whatsapp/templates')
+        .then((r) => setTemplates(r.templates ?? []))
+        .catch(() => {});
+    } catch (err) {
+      setTemplateMsg(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
 
   function initSdk(cfg: EmbeddedSignupConfig) {
     if (sdkInitialised.current) return;
@@ -156,6 +207,8 @@ export default function WhatsAppSetup() {
 
       if (regOk && webhookOk) {
         setMsg(`✅ WhatsApp connected! ${result.displayPhoneNumber ?? ''} ${result.verifiedName ? `(${result.verifiedName})` : ''} — your AI agent is ready.`);
+        // Auto-seed and submit templates after successful connection
+        void seedAndSubmitTemplates();
       } else if (regOk && !webhookOk) {
         setMsg(`⚠️ Connected but webhook pending. Click "Register Webhook" to activate.`);
       } else if (!regOk) {
@@ -375,6 +428,53 @@ export default function WhatsAppSetup() {
           {' or '}
           <button onClick={() => setView('manual')} style={linkBtn}>update manually</button>
         </p>
+      )}
+
+      {/* Message Templates Section */}
+      {integration && (
+        <div style={{ marginTop: 28, padding: '20px 24px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>📋</span>
+              <h3 style={{ margin: 0, fontSize: 15, color: '#1a202c' }}>Message Templates</h3>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleSyncTemplates} disabled={templateLoading} style={{ ...ghostBtn, fontSize: 12, padding: '6px 12px' }}>
+                {templateLoading ? '…' : '↻ Sync from Meta'}
+              </button>
+              <button onClick={handleSeedAndSubmit} disabled={templateLoading} style={{ ...primaryBtn, fontSize: 12, padding: '6px 14px' }}>
+                {templateLoading ? 'Submitting…' : '📤 Submit Templates to Meta'}
+              </button>
+            </div>
+          </div>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#718096', lineHeight: 1.5 }}>
+            WhatsApp requires pre-approved templates for broadcasts and business-initiated messages. Templates are automatically submitted when you connect your number.
+          </p>
+          {templateMsg && (
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: templateMsg.startsWith('⚠️') ? '#c53030' : '#276749', background: templateMsg.startsWith('⚠️') ? '#fff5f5' : '#f0fff4', padding: '8px 12px', borderRadius: 6, border: `1px solid ${templateMsg.startsWith('⚠️') ? '#feb2b2' : '#9ae6b4'}` }}>
+              {templateMsg}
+            </p>
+          )}
+          {templates.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#a0aec0', margin: 0 }}>No templates yet. Click "Submit Templates to Meta" to get started.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {templates.map(t => {
+                const statusColor = t.status === 'APPROVED' ? '#276749' : t.status === 'REJECTED' ? '#c53030' : '#92400e';
+                const statusBg = t.status === 'APPROVED' ? '#f0fff4' : t.status === 'REJECTED' ? '#fff5f5' : '#fffbeb';
+                return (
+                  <div key={t.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f7fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#2d3748', fontFamily: 'monospace' }}>{t.name}</span>
+                      <span style={{ fontSize: 11, color: '#718096', marginLeft: 8 }}>[{t.category}]</span>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: statusBg, color: statusColor }}>{t.status}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Notification number section */}
