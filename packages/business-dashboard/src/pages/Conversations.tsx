@@ -170,6 +170,13 @@ export default function Conversations() {
   const threadRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const expandedRef = useRef<Record<string, boolean>>({});
 
+  // Broadcast state
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState<{ sent: number; failed: number } | null>(null);
+
   // Load conversations list
   const loadConvs = async () => {
     try {
@@ -262,6 +269,27 @@ export default function Conversations() {
 
   const filtered = filterLabel === 'all' ? conversations : conversations.filter(c => c.leadLabel === filterLabel);
 
+  const sendBroadcast = async () => {
+    if (!broadcastMsg.trim() || selectedRecipients.size === 0) return;
+    setBroadcasting(true);
+    setBroadcastResult(null);
+    setActionError('');
+    try {
+      const result = await api<{ sent: number; failed: number }>('/dashboard/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ message: broadcastMsg, recipients: Array.from(selectedRecipients) }),
+      });
+      setBroadcastResult(result);
+      setBroadcastMsg('');
+      setSelectedRecipients(new Set());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Broadcast failed';
+      setActionError(msg);
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 820 }}>
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
@@ -271,8 +299,74 @@ export default function Conversations() {
           <h2 style={{ margin: 0 }}>Active Conversations</h2>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#718096' }}>🟢 Live · {lastUpdate.toLocaleTimeString()}</p>
         </div>
-        <button onClick={loadConvs} style={primaryBtn}>↻ Refresh</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => { setBroadcastOpen(b => !b); setBroadcastResult(null); setActionError(''); }}
+            style={{ ...ghostBtn, background: broadcastOpen ? '#ebf8ff' : undefined, color: broadcastOpen ? '#2b6cb0' : undefined }}>
+            📢 Broadcast
+          </button>
+          <button onClick={loadConvs} style={primaryBtn}>↻ Refresh</button>
+        </div>
       </div>
+
+      {/* Broadcast panel */}
+      {broadcastOpen && (
+        <div style={{ background: '#fff', border: '1px solid #bee3f8', borderRadius: 10, padding: '18px 20px', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 18 }}>📢</span>
+            <h3 style={{ margin: 0, fontSize: 15, color: '#1a202c' }}>Broadcast Message</h3>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#718096' }}>Requires approved WhatsApp template</span>
+          </div>
+          <p style={{ margin: '0 0 12px', fontSize: 12, color: '#e53e3e', background: '#fff5f5', padding: '6px 10px', borderRadius: 6, border: '1px solid #feb2b2' }}>
+            ⚠️ Broadcasts use the <strong>broadcast_message</strong> template. If not yet approved by Meta, the send will be blocked. Submit it for approval in WhatsApp Setup → Templates.
+          </p>
+
+          {/* Recipient selection */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#4a5568' }}>Select Recipients ({selectedRecipients.size} selected)</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setSelectedRecipients(new Set(filtered.map(c => c.customerWaNumber)))}
+                  style={{ ...ghostBtn, fontSize: 11, padding: '3px 10px' }}>Select all</button>
+                <button onClick={() => setSelectedRecipients(new Set())}
+                  style={{ ...ghostBtn, fontSize: 11, padding: '3px 10px' }}>Clear</button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 100, overflowY: 'auto', padding: 8, background: '#f7fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+              {filtered.map(c => (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 16, border: `1px solid ${selectedRecipients.has(c.customerWaNumber) ? '#3182ce' : '#e2e8f0'}`, background: selectedRecipients.has(c.customerWaNumber) ? '#ebf8ff' : '#fff', cursor: 'pointer', fontSize: 11, fontFamily: 'monospace' }}>
+                  <input type="checkbox" checked={selectedRecipients.has(c.customerWaNumber)}
+                    onChange={() => setSelectedRecipients(prev => { const n = new Set(prev); n.has(c.customerWaNumber) ? n.delete(c.customerWaNumber) : n.add(c.customerWaNumber); return n; })}
+                    style={{ accentColor: '#3182ce', width: 11, height: 11 }} />
+                  {c.customerWaNumber}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Message */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#4a5568' }}>Message</label>
+              <span style={{ fontSize: 11, color: broadcastMsg.length > 1000 ? '#c53030' : '#a0aec0' }}>{broadcastMsg.length}/1000</span>
+            </div>
+            <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} maxLength={1000} rows={3}
+              placeholder="Type your broadcast message…"
+              style={{ width: '100%', padding: '8px 12px', fontSize: 13, borderRadius: 6, border: '1px solid #cbd5e0', resize: 'vertical', boxSizing: 'border-box', outline: 'none', fontFamily: 'sans-serif' }} />
+          </div>
+
+          {broadcastResult && (
+            <div style={{ padding: '8px 12px', borderRadius: 6, background: '#f0fff4', border: '1px solid #9ae6b4', fontSize: 13, color: '#276749', marginBottom: 10 }}>
+              ✅ Sent to {broadcastResult.sent} contact{broadcastResult.sent !== 1 ? 's' : ''}{broadcastResult.failed > 0 ? ` · ${broadcastResult.failed} failed` : ''}
+            </div>
+          )}
+
+          <button onClick={sendBroadcast}
+            disabled={broadcasting || !broadcastMsg.trim() || selectedRecipients.size === 0}
+            style={{ ...primaryBtn, opacity: (broadcasting || !broadcastMsg.trim() || selectedRecipients.size === 0) ? 0.6 : 1 }}>
+            {broadcasting ? '⏳ Sending…' : `📤 Send to ${selectedRecipients.size} contact${selectedRecipients.size !== 1 ? 's' : ''}`}
+          </button>
+        </div>
+      )}
 
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>

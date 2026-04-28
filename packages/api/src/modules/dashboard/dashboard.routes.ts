@@ -386,25 +386,38 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'Maximum 100 recipients per broadcast.' });
     }
     try {
-      const { sendWithTemplateFallback } = await import('../../modules/whatsapp/message-dispatcher.js');
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const { sendWithTemplateFallback, sendMessage } = await import('../../modules/whatsapp/message-dispatcher.js');
+
+      // Check if broadcast_message template is approved
+      const broadcastTemplate = await templateService.getTemplate(request.businessId, 'broadcast_message');
+      const templateApproved = broadcastTemplate?.status === 'APPROVED';
+
+      // If no approved template exists, block the broadcast — Meta requires templates for business-initiated messages
+      if (!templateApproved) {
+        return reply.status(403).send({
+          error: 'Broadcast requires an approved "broadcast_message" WhatsApp template. Go to WhatsApp Setup → Templates to submit it for Meta approval.',
+          templateStatus: broadcastTemplate?.status ?? 'NOT_FOUND',
+          action: 'Submit the broadcast_message template for Meta approval first.',
+        });
+      }
+
       const results: Array<{ number: string; status: 'sent' | 'failed'; usedTemplate?: boolean; error?: string }> = [];
       for (const number of recipients) {
         try {
-          // Use broadcast_message template if approved, else plain text
-          const result = await sendWithTemplateFallback(
+          // Use approved broadcast_message template — strict mode
+          const result = await templateService.sendTemplateMessage(
             request.businessId, number, 'broadcast_message',
             ['there', message, ''],
-            message,
           );
-          results.push({ number, status: result.success ? 'sent' : 'failed', usedTemplate: result.usedTemplate, error: result.errorMessage });
+          results.push({ number, status: result.success ? 'sent' : 'failed', usedTemplate: true, error: result.error });
         } catch (err) {
           results.push({ number, status: 'failed', error: err instanceof Error ? err.message : 'Failed' });
         }
       }
       const sent = results.filter(r => r.status === 'sent').length;
       const failed = results.filter(r => r.status === 'failed').length;
-      const templated = results.filter(r => r.usedTemplate).length;
-      return reply.send({ sent, failed, templated, results });
+      return reply.send({ sent, failed, templated: sent, results });
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'Broadcast failed.' });
     }
