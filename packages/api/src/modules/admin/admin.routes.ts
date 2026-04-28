@@ -556,6 +556,21 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // DELETE /admin/templates/:businessId/:name — delete a template
+  app.delete('/admin/templates/:businessId/:name', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { businessId, name } = request.params as { businessId: string; name: string };
+    const { language, keepOnMeta } = request.query as { language?: string; keepOnMeta?: string };
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const result = await templateService.deleteTemplate(businessId, name, language ?? 'en_US', keepOnMeta !== 'true');
+      await logAuditEvent(request.operatorId, 'delete_template', 'template', businessId, { name, ...result });
+      return reply.send(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Delete failed.';
+      return reply.status(msg.includes('not found') ? 404 : 500).send({ error: msg });
+    }
+  });
+
   // ─── Mass Email ──────────────────────────────────────────────────────────
 
   // POST /admin/businesses/email-blast — send email to all or selected businesses

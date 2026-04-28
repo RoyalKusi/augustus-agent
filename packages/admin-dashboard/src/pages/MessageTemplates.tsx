@@ -146,6 +146,24 @@ export default function MessageTemplates() {
     }
   };
 
+  const deleteTemplate = async (businessId: string, name: string) => {
+    if (!confirm(`Delete template '${name}'? This will also remove it from Meta if it was submitted.`)) return;
+    setSubmitting(`delete-${businessId}-${name}`);
+    setActionMsg(''); setActionError('');
+    try {
+      const r = await adminApiFetch<{ deletedLocally: boolean; deletedFromMeta: boolean; error?: string }>(
+        `/admin/templates/${businessId}/${name}`, { method: 'DELETE' }
+      );
+      const metaNote = r.deletedFromMeta ? ' (removed from Meta too)' : r.error ? ` (Meta: ${r.error})` : ' (local only — not yet submitted to Meta)';
+      setActionMsg(`✅ Template '${name}' deleted${metaNote}`);
+      await fetchData();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
   const createTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting('create');
@@ -414,21 +432,27 @@ export default function MessageTemplates() {
                         {metaId ? metaId.slice(0, 12) + '…' : '—'}
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        {t.status === 'PENDING' && !metaId && (
-                          <button onClick={() => submitTemplate(bizId, t.name)} disabled={!!submitting} className="action-btn"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
-                            <Send size={11} /> {isSubmitting ? 'Submitting…' : 'Submit to Meta'}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {t.status === 'PENDING' && !metaId && (
+                            <button onClick={() => submitTemplate(bizId, t.name)} disabled={!!submitting} className="action-btn"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                              <Send size={11} /> {isSubmitting ? 'Submitting…' : 'Submit to Meta'}
+                            </button>
+                          )}
+                          {t.status === 'APPROVED' && (
+                            <span style={{ fontSize: 11, color: '#276749', fontWeight: 600 }}>✅ Ready to use</span>
+                          )}
+                          {t.status === 'REJECTED' && (
+                            <button onClick={() => submitTemplate(bizId, t.name)} disabled={!!submitting} className="action-btn"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: '#c53030', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                              <RefreshCw size={11} /> Resubmit
+                            </button>
+                          )}
+                          <button onClick={() => deleteTemplate(bizId, t.name)} disabled={!!submitting} className="action-btn"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: 'transparent', color: '#c53030', border: '1px solid #feb2b2', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                            🗑️
                           </button>
-                        )}
-                        {t.status === 'APPROVED' && (
-                          <span style={{ fontSize: 11, color: '#276749', fontWeight: 600 }}>✅ Ready to use</span>
-                        )}
-                        {t.status === 'REJECTED' && (
-                          <button onClick={() => submitTemplate(bizId, t.name)} disabled={!!submitting} className="action-btn"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: '#c53030', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
-                            <RefreshCw size={11} /> Resubmit
-                          </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -116,6 +116,24 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // DELETE /whatsapp/templates/:name — delete a template (local + optionally Meta)
+  app.delete('/whatsapp/templates/:name', { preHandler: authenticate }, async (request, reply) => {
+    const { name } = request.params as { name: string };
+    const { language, keepOnMeta } = request.query as { language?: string; keepOnMeta?: string };
+    try {
+      const result = await templateService.deleteTemplate(
+        request.businessId,
+        name,
+        language ?? 'en_US',
+        keepOnMeta !== 'true',
+      );
+      return reply.send(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Delete failed.';
+      return reply.status(msg.includes('not found') ? 404 : 500).send({ error: msg });
+    }
+  });
+
   // POST /whatsapp/templates/submit-all — submit all pending templates to Meta
   app.post('/whatsapp/templates/submit-all', { preHandler: authenticate }, async (request, reply) => {
     try {

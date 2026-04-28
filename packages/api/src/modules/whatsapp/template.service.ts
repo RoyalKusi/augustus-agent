@@ -434,9 +434,51 @@ export class TemplateService {
   }
 
   /**
-   * Seed platform standard templates for a business.
-   * Called after WhatsApp integration is set up.
+   * Delete a template from local DB and optionally from Meta.
    */
+  async deleteTemplate(businessId: string, templateName: string, language = 'en_US', deleteFromMeta = true): Promise<{ deletedLocally: boolean; deletedFromMeta: boolean; error?: string }> {
+    // Get template first to check if it has a Meta ID
+    const template = await this.getTemplate(businessId, templateName, language);
+    if (!template) throw new Error(`Template '${templateName}' not found.`);
+
+    let deletedFromMeta = false;
+    let metaError: string | undefined;
+
+    // Delete from Meta if it was submitted and deleteFromMeta is true
+    if (deleteFromMeta && template.metaTemplateId) {
+      try {
+        const integration = await getCredentials(businessId);
+        if (integration?.wabaId && integration.accessToken) {
+          const graphVersion = config.meta.graphApiVersion;
+          const res = await fetch(
+            `https://graph.facebook.com/${graphVersion}/${template.metaTemplateId}`,
+            {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${integration.accessToken}` },
+              signal: AbortSignal.timeout(10_000),
+            },
+          );
+          if (res.ok) {
+            deletedFromMeta = true;
+          } else {
+            const body = await res.json().catch(() => ({})) as { error?: { message?: string } };
+            metaError = body.error?.message ?? `Meta API error ${res.status}`;
+          }
+        }
+      } catch (err) {
+        metaError = err instanceof Error ? err.message : 'Failed to delete from Meta';
+      }
+    }
+
+    // Always delete from local DB regardless of Meta result
+    await pool.query(
+      `DELETE FROM message_templates WHERE business_id = $1 AND name = $2 AND language = $3`,
+      [businessId, templateName, language],
+    );
+
+    return { deletedLocally: true, deletedFromMeta, error: metaError };
+  }
+
   async seedPlatformTemplates(businessId: string): Promise<number> {
     let created = 0;
     for (const tmpl of PLATFORM_TEMPLATES) {
@@ -449,10 +491,6 @@ export class TemplateService {
     return created;
   }
 
-  /**
-   * Send a message using an approved template.
-   * Fills in the parameter placeholders with provided values.
-   */
   async sendTemplateMessage(
     businessId: string,
     to: string,
