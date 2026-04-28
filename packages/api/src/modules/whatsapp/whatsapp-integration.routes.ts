@@ -154,6 +154,20 @@ export async function whatsappIntegrationRoutes(app: FastifyInstance): Promise<v
 
     try {
       const result = await exchangeEmbeddedSignupCode(businessId, code);
+
+      // Auto-seed platform templates after successful connection (best-effort, non-blocking)
+      void (async () => {
+        try {
+          const { templateService } = await import('./template.service.js');
+          const seeded = await templateService.seedPlatformTemplates(businessId);
+          if (seeded > 0) {
+            app.log.info({ businessId, seeded }, '[Templates] Platform templates seeded after WhatsApp connection');
+          }
+        } catch (err) {
+          app.log.warn({ err, businessId }, '[Templates] Failed to seed platform templates (non-fatal)');
+        }
+      })();
+
       return reply.send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Token exchange failed.';

@@ -15,6 +15,7 @@ import { dashboardRoutes } from './modules/dashboard/index.js';
 import { adminRoutes } from './modules/admin/index.js';
 import { webhookRoutes } from './modules/webhook/webhook.routes.js';
 import { whatsappIntegrationRoutes } from './modules/whatsapp/whatsapp-integration.routes.js';
+import { templateRoutes } from './modules/whatsapp/template.routes.js';
 import { paymentRoutes } from './modules/payment/payment.routes.js';
 import { interventionRoutes } from './modules/intervention/intervention.routes.js';
 import { legalRoutes } from './routes/legal.js';
@@ -246,6 +247,7 @@ const start = async () => {
     await app.register(adminRoutes);
     await app.register(webhookRoutes);
     await app.register(whatsappIntegrationRoutes, { prefix: '/whatsapp' });
+    await app.register(templateRoutes);
     await app.register(paymentRoutes);
     await app.register(interventionRoutes);
     await app.register(legalRoutes);
