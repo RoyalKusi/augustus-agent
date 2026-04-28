@@ -50,6 +50,7 @@ export default function WhatsAppSetup() {
   const [templates, setTemplates] = useState<Array<{ name: string; category: string; status: string }>>([]);
   const [templateMsg, setTemplateMsg] = useState('');
   const [templateLoading, setTemplateLoading] = useState(false);
+  const [templatesSubmitted, setTemplatesSubmitted] = useState(false);
   const sdkInitialised = useRef(false);
 
   useEffect(() => {
@@ -89,7 +90,14 @@ export default function WhatsAppSetup() {
         .then((r) => setNotifNumber(r.notificationWaNumber ?? ''))
         .catch(() => {}),
       apiFetch<{ templates: Array<{ name: string; category: string; status: string }> }>('/whatsapp/templates')
-        .then((r) => setTemplates(r.templates ?? []))
+        .then((r) => {
+          const tmpl = r.templates ?? [];
+          setTemplates(tmpl);
+          // Mark as submitted if any templates exist with a meta ID (already submitted before)
+          if (tmpl.some(t => t.status !== 'PENDING' || tmpl.length > 0)) {
+            setTemplatesSubmitted(tmpl.length > 0 && tmpl.every(t => t.status !== 'PENDING' || t.status === 'PENDING'));
+          }
+        })
         .catch(() => {}),
     ]).finally(() => setPageLoading(false));
   }, []);
@@ -103,6 +111,7 @@ export default function WhatsAppSetup() {
       // Submit all pending templates to Meta
       const result = await apiFetch<{ submitted: number; failed: number }>('/whatsapp/templates/submit-all', { method: 'POST' });
       setTemplateMsg(`✅ ${result.submitted} message templates submitted to Meta for approval.`);
+      setTemplatesSubmitted(true);
       // Refresh template list
       apiFetch<{ templates: Array<{ name: string; category: string; status: string }> }>('/whatsapp/templates')
         .then((r) => setTemplates(r.templates ?? []))
@@ -116,6 +125,7 @@ export default function WhatsAppSetup() {
     setTemplateLoading(true);
     setTemplateMsg('');
     await seedAndSubmitTemplates();
+    setTemplatesSubmitted(true);
     setTemplateLoading(false);
   };
 
@@ -442,8 +452,8 @@ export default function WhatsAppSetup() {
               <button onClick={handleSyncTemplates} disabled={templateLoading} style={{ ...ghostBtn, fontSize: 12, padding: '6px 12px' }}>
                 {templateLoading ? '…' : '↻ Sync from Meta'}
               </button>
-              <button onClick={handleSeedAndSubmit} disabled={templateLoading} style={{ ...primaryBtn, fontSize: 12, padding: '6px 14px' }}>
-                {templateLoading ? 'Submitting…' : '📤 Submit Templates to Meta'}
+              <button onClick={handleSeedAndSubmit} disabled={templateLoading || templatesSubmitted} style={{ ...primaryBtn, fontSize: 12, padding: '6px 14px', background: templatesSubmitted ? '#38a169' : '#3182ce' }}>
+                {templateLoading ? 'Submitting…' : templatesSubmitted ? '✅ Submitted' : '📤 Submit Templates to Meta'}
               </button>
             </div>
           </div>
