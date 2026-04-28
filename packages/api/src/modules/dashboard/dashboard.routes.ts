@@ -373,7 +373,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.post('/dashboard/broadcast', { preHandler: authenticate }, async (request, reply) => {
     const { message, recipients } = request.body as {
       message: string;
-      recipients: string[]; // array of WhatsApp numbers
+      recipients: string[];
     };
     if (!message?.trim()) return reply.status(400).send({ error: 'message is required.' });
     if (!Array.isArray(recipients) || recipients.length === 0) {
@@ -386,19 +386,25 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'Maximum 100 recipients per broadcast.' });
     }
     try {
-      const { sendMessage } = await import('../../modules/whatsapp/message-dispatcher.js');
-      const results: Array<{ number: string; status: 'sent' | 'failed'; error?: string }> = [];
+      const { sendWithTemplateFallback } = await import('../../modules/whatsapp/message-dispatcher.js');
+      const results: Array<{ number: string; status: 'sent' | 'failed'; usedTemplate?: boolean; error?: string }> = [];
       for (const number of recipients) {
         try {
-          await sendMessage(request.businessId, { type: 'text', to: number, body: message });
-          results.push({ number, status: 'sent' });
+          // Use broadcast_message template if approved, else plain text
+          const result = await sendWithTemplateFallback(
+            request.businessId, number, 'broadcast_message',
+            ['there', message, ''],
+            message,
+          );
+          results.push({ number, status: result.success ? 'sent' : 'failed', usedTemplate: result.usedTemplate, error: result.errorMessage });
         } catch (err) {
           results.push({ number, status: 'failed', error: err instanceof Error ? err.message : 'Failed' });
         }
       }
       const sent = results.filter(r => r.status === 'sent').length;
       const failed = results.filter(r => r.status === 'failed').length;
-      return reply.send({ sent, failed, results });
+      const templated = results.filter(r => r.usedTemplate).length;
+      return reply.send({ sent, failed, templated, results });
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'Broadcast failed.' });
     }

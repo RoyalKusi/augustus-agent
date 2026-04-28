@@ -384,6 +384,7 @@ export async function pollPaynowStatus(orderId: string): Promise<void> {
 
 /**
  * Send a WhatsApp receipt message to the customer after payment is confirmed.
+ * Uses payment_receipt template if approved, falls back to plain text.
  * Property 21: receipt must contain order_reference, items, total_amount, timestamp.
  */
 export async function dispatchReceipt(
@@ -407,7 +408,7 @@ export async function dispatchReceipt(
     hour: '2-digit', minute: '2-digit',
   });
 
-  const body =
+  const fallbackBody =
     `✅ *Payment Confirmed!*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n\n` +
     `📋 *Order Reference:* ${orderReference}\n` +
@@ -419,7 +420,13 @@ export async function dispatchReceipt(
     `Thank you for your purchase! 🎉\n` +
     `Your order is being processed. We'll notify you once it's on its way.`;
 
-  await sendMessage(businessId, { type: 'text', to: customerWaNumber, body });
+  // Use payment_receipt template if approved, else plain text
+  const { sendWithTemplateFallback } = await import('../whatsapp/message-dispatcher.js');
+  await sendWithTemplateFallback(
+    businessId, customerWaNumber, 'payment_receipt',
+    ['Customer', `${currency} ${totalAmount.toFixed(2)}`, orderReference],
+    fallbackBody,
+  );
 }
 
 // ─── Task 9.4: Payment Link Expiry (Property 22) ─────────────────────────────
@@ -444,11 +451,12 @@ export async function expireStaleOrders(): Promise<void> {
   );
 
   for (const row of result.rows) {
-    await sendMessage(row.business_id, {
-      type: 'text',
-      to: row.customer_wa_number,
-      body: `Your payment link for order ${row.order_reference} has expired. Please start a new order if you wish to continue.`,
-    });
+    const { sendWithTemplateFallback } = await import('../whatsapp/message-dispatcher.js');
+    await sendWithTemplateFallback(
+      row.business_id, row.customer_wa_number, 'payment_link_expired',
+      ['there', row.order_reference],
+      `Your payment link for order ${row.order_reference} has expired. Please start a new order if you wish to continue.`,
+    );
   }
 }
 

@@ -2,7 +2,7 @@
  * Outbound message dispatcher for the WhatsApp_Integration_Service.
  *
  * Supports: text, image, document/PDF, interactive carousel,
- *           quick-reply buttons, and payment links.
+ *           quick-reply buttons, payment links, and message templates.
  *
  * Validates: Requirements 6.1, 6.2, 6.4
  */
@@ -424,4 +424,37 @@ export async function sendMediaWithFallback(
   // Within limit (or size unknown) — send the media normally
   const result = await sendMessage(businessId, mediaMsg);
   return { ...result, usedFallback: false };
+}
+
+/**
+ * Send a message using an approved template, falling back to plain text if:
+ * - The template doesn't exist locally
+ * - The template is not yet approved
+ * - The template send fails
+ *
+ * This ensures messages always get delivered while templates are pending approval.
+ */
+export async function sendWithTemplateFallback(
+  businessId: string,
+  to: string,
+  templateName: string,
+  params: string[],
+  fallbackText: string,
+  language = 'en_US',
+): Promise<SendMessageResult & { usedTemplate: boolean }> {
+  try {
+    const { templateService } = await import('./template.service.js');
+    const result = await templateService.sendTemplateMessage(businessId, to, templateName, params, language);
+    if (result.success) {
+      return { ...result, usedTemplate: true };
+    }
+    // Template not approved or failed — fall through to plain text
+    console.info(`[Dispatcher] Template '${templateName}' not available (${result.error}), using plain text fallback`);
+  } catch (err) {
+    console.warn(`[Dispatcher] Template send error for '${templateName}':`, err);
+  }
+
+  // Fallback: send as plain text
+  const fallback = await sendMessage(businessId, { type: 'text', to, body: fallbackText });
+  return { ...fallback, usedTemplate: false };
 }

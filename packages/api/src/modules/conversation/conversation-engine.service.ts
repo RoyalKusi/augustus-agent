@@ -713,14 +713,21 @@ export async function processInboundMessage(msg) {
                 total,
                 currency,
               );
-              await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: confirmationMsg });
-              // Then send the payment link
-              await sendMessage(businessId, {
-                type: 'payment_link',
-                to: customerWaNumber,
-                body: 'Tap the link below to pay securely',
-                paymentUrl,
-              });
+              // Use order_confirmation template if approved, else plain text
+              const { sendWithTemplateFallback } = await import('../whatsapp/message-dispatcher.js');
+              const itemsSummary = orderItems.map(i => `${i.productName} x${i.quantity}`).join(', ');
+              await sendWithTemplateFallback(
+                businessId, customerWaNumber, 'order_confirmation',
+                [customerName || 'there', orderRef, itemsSummary, `${currency} ${total.toFixed(2)}`],
+                confirmationMsg,
+              );
+              // Then send the payment link using payment_link template if approved
+              const payLinkFallback = `Tap the link below to pay securely\n\n${paymentUrl}`;
+              await sendWithTemplateFallback(
+                businessId, customerWaNumber, 'payment_link',
+                [customerName || 'there', orderRef, `${currency} ${total.toFixed(2)}`, paymentUrl],
+                payLinkFallback,
+              );
               // Persist to DB so in-app chatbox shows the order confirmation
               const paymentRecord = `${confirmationMsg}\n\nPayment link sent ✅`;
               await pool.query(
