@@ -549,6 +549,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     try {
       const { templateService } = await import('../whatsapp/template.service.js');
       const result = await templateService.syncStatusFromMeta(businessId);
+      if (result.error) return reply.status(502).send({ error: result.error });
       return reply.send(result);
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });

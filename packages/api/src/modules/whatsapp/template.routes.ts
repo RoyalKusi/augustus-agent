@@ -77,6 +77,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
   app.post('/whatsapp/templates/sync', { preHandler: authenticate }, async (request, reply) => {
     try {
       const result = await templateService.syncStatusFromMeta(request.businessId);
+      if (result.error) return reply.status(502).send({ error: result.error });
       return reply.send(result);
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'Sync failed.' });

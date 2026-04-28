@@ -350,44 +350,87 @@ export class TemplateService {
 
   /**
    * Sync template statuses from Meta (check approval status).
+   * Matches templates by meta_template_id first, then falls back to name+language.
    */
-  async syncStatusFromMeta(businessId: string): Promise<{ synced: number; approved: number; rejected: number }> {
+  async syncStatusFromMeta(businessId: string): Promise<{ synced: number; approved: number; rejected: number; error?: string }> {
     const integration = await getCredentials(businessId);
-    if (!integration?.wabaId) return { synced: 0, approved: 0, rejected: 0 };
+    if (!integration?.wabaId) return { synced: 0, approved: 0, rejected: 0, error: 'No WhatsApp integration or WABA ID not set.' };
 
     const { accessToken, wabaId } = integration;
     const graphVersion = config.meta.graphApiVersion;
 
-    const res = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${wabaId}/message_templates?fields=id,name,status,rejected_reason&limit=100`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
+    let res: Response;
+    try {
+      res = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${wabaId}/message_templates?fields=id,name,language,status,rejected_reason,category&limit=200`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+    } catch (err) {
+      return { synced: 0, approved: 0, rejected: 0, error: err instanceof Error ? err.message : 'Network error' };
+    }
 
-    if (!res.ok) return { synced: 0, approved: 0, rejected: 0 };
+    if (!res.ok) {
+      let errMsg = `Meta API error ${res.status}`;
+      try {
+        const errBody = await res.json() as { error?: { message?: string } };
+        errMsg = errBody.error?.message ?? errMsg;
+      } catch { /* ignore */ }
+      return { synced: 0, approved: 0, rejected: 0, error: errMsg };
+    }
 
-    const body = await res.json() as { data?: Array<{ id: string; name: string; status: string; rejected_reason?: string }> };
-    const templates = body.data ?? [];
+    const body = await res.json() as {
+      data?: Array<{
+        id: string;
+        name: string;
+        language: string;
+        status: string;
+        rejected_reason?: string;
+        category?: string;
+      }>
+    };
+    const metaTemplates = body.data ?? [];
 
     let approved = 0;
     let rejected = 0;
+    let synced = 0;
 
-    for (const t of templates) {
+    for (const t of metaTemplates) {
       const status = t.status.toUpperCase() as TemplateStatus;
       if (status === 'APPROVED') approved++;
       if (status === 'REJECTED') rejected++;
 
-      await pool.query(
+      // Try to match by meta_template_id first (most reliable)
+      const byId = await pool.query(
         `UPDATE message_templates
          SET status = $1, rejection_reason = $2, updated_at = NOW()
-         WHERE business_id = $3 AND name = $4 AND meta_template_id = $5`,
-        [status, t.rejected_reason ?? null, businessId, t.name, t.id],
+         WHERE business_id = $3 AND meta_template_id = $4
+         RETURNING id`,
+        [status, t.rejected_reason ?? null, businessId, t.id],
       );
+
+      if ((byId.rowCount ?? 0) > 0) {
+        synced++;
+        continue;
+      }
+
+      // Fallback: match by name + language (for templates submitted but ID not yet stored)
+      const byName = await pool.query(
+        `UPDATE message_templates
+         SET status = $1, rejection_reason = $2, meta_template_id = $3, updated_at = NOW()
+         WHERE business_id = $4 AND name = $5 AND language = $6
+         RETURNING id`,
+        [status, t.rejected_reason ?? null, t.id, businessId, t.name, t.language],
+      );
+
+      if ((byName.rowCount ?? 0) > 0) {
+        synced++;
+      }
     }
 
-    return { synced: templates.length, approved, rejected };
+    return { synced, approved, rejected };
   }
 
   /**
