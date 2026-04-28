@@ -318,7 +318,7 @@ export default function Conversations() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <h2 style={{ margin: 0 }}>Active Conversations</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#718096' }}>🟢 Live · {lastUpdate.toLocaleTimeString()}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#718096' }}>🟢 Live · {lastUpdate.toLocaleTimeString()} · v2</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={openBroadcast}
