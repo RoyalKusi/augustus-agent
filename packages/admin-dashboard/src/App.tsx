@@ -14,6 +14,7 @@ import ApiKeyStatus from './pages/ApiKeyStatus';
 import SupportTickets from './pages/SupportTickets';
 import { NotificationHistory } from './pages/NotificationHistory';
 import ReferralCommission from './pages/ReferralCommission';
+import MessageTemplates from './pages/MessageTemplates';
 
 export default function App() {
   const basename = import.meta.env.PROD ? '/admin-app' : '';
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="api-keys" element={<ApiKeyStatus />} />
           <Route path="referral-commission" element={<ReferralCommission />} />
           <Route path="notifications" element={<NotificationHistory />} />
+          <Route path="message-templates" element={<MessageTemplates />} />
         </Route>
       </Routes>
     </BrowserRouter>

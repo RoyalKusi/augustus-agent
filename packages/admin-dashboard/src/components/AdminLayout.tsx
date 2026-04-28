@@ -13,6 +13,7 @@ const navItems = [
   { to: '/admin/promo-codes', label: 'Promo Codes' },
   { to: '/admin/referral-commission', label: 'Referral Commission' },
   { to: '/admin/api-keys', label: 'API Key Status' },
+  { to: '/admin/message-templates', label: 'Message Templates' },
   { to: '/admin/notifications', label: 'Notifications' },
 ];
 

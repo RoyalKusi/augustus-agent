@@ -430,6 +430,131 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   const { commissionRoutes } = await import('../referral-earnings/commission.routes.js');
   commissionRoutes(app);
 
+  // ─── Message Template Management (Admin) ─────────────────────────────────
+
+  // GET /admin/templates — list platform templates across all businesses (or for a specific business)
+  app.get('/admin/templates', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { businessId } = request.query as { businessId?: string };
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      if (businessId) {
+        const templates = await templateService.listTemplates(businessId);
+        return reply.send({ templates });
+      }
+      // List all templates across all businesses
+      const result = await pool.query(
+        `SELECT mt.*, b.name AS business_name, b.email AS business_email
+         FROM message_templates mt
+         JOIN businesses b ON b.id = mt.business_id
+         ORDER BY mt.category, mt.name, b.name`
+      );
+      return reply.send({ templates: result.rows });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /admin/templates — create a platform template for a specific business
+  app.post('/admin/templates', { preHandler: authenticateOperator }, async (request, reply) => {
+    const body = request.body as {
+      businessId?: string;
+      name?: string;
+      category?: string;
+      language?: string;
+      headerType?: string;
+      headerText?: string;
+      bodyText?: string;
+      footerText?: string;
+      buttons?: unknown[];
+      exampleParams?: string[];
+    };
+    if (!body.businessId || !body.name || !body.category || !body.bodyText) {
+      return reply.status(400).send({ error: 'businessId, name, category, bodyText are required.' });
+    }
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const template = await templateService.upsertTemplate(body.businessId, {
+        name: body.name,
+        category: body.category as 'UTILITY' | 'MARKETING' | 'AUTHENTICATION',
+        language: body.language,
+        headerType: body.headerType,
+        headerText: body.headerText,
+        bodyText: body.bodyText,
+        footerText: body.footerText,
+        buttons: body.buttons as never,
+        exampleParams: body.exampleParams,
+      });
+      await logAuditEvent(request.operatorId, 'create_template', 'template', template.id, { name: body.name, category: body.category });
+      return reply.status(201).send({ template });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /admin/templates/seed/:businessId — seed platform templates for a business
+  app.post('/admin/templates/seed/:businessId', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { businessId } = request.params as { businessId: string };
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const created = await templateService.seedPlatformTemplates(businessId);
+      await logAuditEvent(request.operatorId, 'seed_templates', 'business', businessId, { created });
+      return reply.send({ created, message: `${created} platform templates seeded.` });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /admin/templates/submit/:businessId/:name — submit a template to Meta for a business
+  app.post('/admin/templates/submit/:businessId/:name', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { businessId, name } = request.params as { businessId: string; name: string };
+    const { language } = request.query as { language?: string };
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const result = await templateService.submitToMeta(businessId, name, language ?? 'en_US');
+      await logAuditEvent(request.operatorId, 'submit_template', 'template', businessId, { name, ...result });
+      return reply.send(result);
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /admin/templates/submit-all/:businessId — submit all pending templates for a business
+  app.post('/admin/templates/submit-all/:businessId', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { businessId } = request.params as { businessId: string };
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const templates = await templateService.listTemplates(businessId);
+      const pending = templates.filter(t => t.status === 'PENDING' && !t.metaTemplateId);
+      const results = [];
+      for (const t of pending) {
+        try {
+          const r = await templateService.submitToMeta(businessId, t.name, t.language);
+          results.push({ name: t.name, ...r, success: true });
+        } catch (err) {
+          results.push({ name: t.name, success: false, error: err instanceof Error ? err.message : 'Failed' });
+        }
+        await new Promise(r => setTimeout(r, 300));
+      }
+      const submitted = results.filter(r => r.success).length;
+      await logAuditEvent(request.operatorId, 'submit_all_templates', 'business', businessId, { submitted });
+      return reply.send({ submitted, failed: results.filter(r => !r.success).length, results });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
+  // POST /admin/templates/sync/:businessId — sync template statuses from Meta
+  app.post('/admin/templates/sync/:businessId', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { businessId } = request.params as { businessId: string };
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const result = await templateService.syncStatusFromMeta(businessId);
+      return reply.send(result);
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+    }
+  });
+
   // ─── Mass Email ──────────────────────────────────────────────────────────
 
   // POST /admin/businesses/email-blast — send email to all or selected businesses
