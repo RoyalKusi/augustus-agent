@@ -176,6 +176,10 @@ export default function Conversations() {
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState<{ sent: number; failed: number } | null>(null);
+  const [broadcastTemplates, setBroadcastTemplates] = useState<Array<{ name: string; category: string; bodyText: string; exampleParams: string[] | null }>>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [templateParams, setTemplateParams] = useState<string[]>([]);
 
   // Load conversations list
   const loadConvs = async () => {
@@ -270,25 +274,42 @@ export default function Conversations() {
   const filtered = filterLabel === 'all' ? conversations : conversations.filter(c => c.leadLabel === filterLabel);
 
   const sendBroadcast = async () => {
-    if (!broadcastMsg.trim() || selectedRecipients.size === 0) return;
+    if (!selectedTemplate || selectedRecipients.size === 0) return;
     setBroadcasting(true);
     setBroadcastResult(null);
     setActionError('');
     try {
       const result = await api<{ sent: number; failed: number }>('/dashboard/broadcast', {
         method: 'POST',
-        body: JSON.stringify({ message: broadcastMsg, recipients: Array.from(selectedRecipients) }),
+        body: JSON.stringify({ templateName: selectedTemplate, templateParams, recipients: Array.from(selectedRecipients) }),
       });
       setBroadcastResult(result);
-      setBroadcastMsg('');
+      setSelectedTemplate('');
+      setTemplateParams([]);
       setSelectedRecipients(new Set());
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Broadcast failed';
-      setActionError(msg);
+      setActionError(e instanceof Error ? e.message : 'Broadcast failed');
     } finally {
       setBroadcasting(false);
     }
   };
+
+  // Load approved templates when broadcast panel opens
+  const openBroadcast = async () => {
+    setBroadcastOpen(b => !b);
+    setBroadcastResult(null);
+    setActionError('');
+    if (!broadcastOpen) {
+      try {
+        const data = await api<{ templates: Array<{ name: string; category: string; bodyText: string; exampleParams: string[] | null }> }>('/dashboard/broadcast/templates');
+        setBroadcastTemplates(data.templates ?? []);
+      } catch { setBroadcastTemplates([]); }
+    }
+  };
+
+  const activeTemplate = broadcastTemplates.find(t => t.name === selectedTemplate);
+  const filteredTemplates = selectedCategory === 'all' ? broadcastTemplates : broadcastTemplates.filter(t => t.category === selectedCategory);
+  const paramCount = activeTemplate ? (activeTemplate.bodyText.match(/\{\{\d+\}\}/g) ?? []).length : 0;
 
   return (
     <div style={{ maxWidth: 820 }}>
@@ -300,7 +321,7 @@ export default function Conversations() {
           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#718096' }}>🟢 Live · {lastUpdate.toLocaleTimeString()}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => { setBroadcastOpen(b => !b); setBroadcastResult(null); setActionError(''); }}
+          <button onClick={openBroadcast}
             style={{ ...ghostBtn, background: broadcastOpen ? '#ebf8ff' : undefined, color: broadcastOpen ? '#2b6cb0' : undefined }}>
             📢 Broadcast
           </button>
@@ -311,19 +332,81 @@ export default function Conversations() {
       {/* Broadcast panel */}
       {broadcastOpen && (
         <div style={{ background: '#fff', border: '1px solid #bee3f8', borderRadius: 10, padding: '18px 20px', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <span style={{ fontSize: 18 }}>📢</span>
             <h3 style={{ margin: 0, fontSize: 15, color: '#1a202c' }}>Broadcast Message</h3>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#718096' }}>Requires approved WhatsApp template</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#718096' }}>Uses approved WhatsApp templates only</span>
           </div>
-          <p style={{ margin: '0 0 12px', fontSize: 12, color: '#e53e3e', background: '#fff5f5', padding: '6px 10px', borderRadius: 6, border: '1px solid #feb2b2' }}>
-            ⚠️ Broadcasts use the <strong>broadcast_message</strong> template. If not yet approved by Meta, the send will be blocked. Submit it for approval in WhatsApp Setup → Templates.
-          </p>
 
-          {/* Recipient selection */}
+          {broadcastTemplates.length === 0 ? (
+            <div style={{ padding: '16px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: 8, fontSize: 13, color: '#c53030' }}>
+              ⚠️ No approved templates available. Go to <strong>WhatsApp Setup → Templates</strong> to submit templates for Meta approval.
+            </div>
+          ) : (
+            <>
+              {/* Step 1: Category filter */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#4a5568', display: 'block', marginBottom: 6 }}>1. Select Template Category</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {['all', 'UTILITY', 'MARKETING', 'AUTHENTICATION'].map(cat => {
+                    const count = cat === 'all' ? broadcastTemplates.length : broadcastTemplates.filter(t => t.category === cat).length;
+                    if (count === 0 && cat !== 'all') return null;
+                    return (
+                      <button key={cat} onClick={() => { setSelectedCategory(cat); setSelectedTemplate(''); setTemplateParams([]); }}
+                        style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1px solid',
+                          background: selectedCategory === cat ? '#2563eb' : '#f7fafc',
+                          color: selectedCategory === cat ? '#fff' : '#4a5568',
+                          borderColor: selectedCategory === cat ? '#2563eb' : '#e2e8f0' }}>
+                        {cat === 'all' ? `All (${count})` : `${cat} (${count})`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Step 2: Template picker */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#4a5568', display: 'block', marginBottom: 6 }}>2. Select Template</label>
+                <select value={selectedTemplate} onChange={e => { setSelectedTemplate(e.target.value); setTemplateParams([]); }}
+                  style={{ width: '100%', padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', outline: 'none' }}>
+                  <option value="">— Choose a template —</option>
+                  {filteredTemplates.map(t => (
+                    <option key={t.name} value={t.name}>{t.name} [{t.category}]</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Step 3: Template preview + params */}
+              {activeTemplate && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#4a5568', display: 'block', marginBottom: 6 }}>3. Template Preview & Parameters</label>
+                  <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#2d3748', marginBottom: 10, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                    {activeTemplate.bodyText}
+                  </div>
+                  {paramCount > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {Array.from({ length: paramCount }, (_, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#718096', minWidth: 60 }}>{`{{${i + 1}}}`}</span>
+                          <input value={templateParams[i] ?? ''} onChange={e => {
+                            const p = [...templateParams];
+                            p[i] = e.target.value;
+                            setTemplateParams(p);
+                          }} placeholder={activeTemplate.exampleParams?.[i] ?? `Parameter ${i + 1}`}
+                            style={{ flex: 1, padding: '7px 10px', border: '1px solid #cbd5e0', borderRadius: 6, fontSize: 13, outline: 'none' }} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Step 4: Recipients */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#4a5568' }}>Select Recipients ({selectedRecipients.size} selected)</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#4a5568' }}>{broadcastTemplates.length > 0 ? '4.' : '2.'} Select Recipients ({selectedRecipients.size} selected)</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setSelectedRecipients(new Set(filtered.map(c => c.customerWaNumber)))}
                   style={{ ...ghostBtn, fontSize: 11, padding: '3px 10px' }}>Select all</button>
@@ -343,17 +426,6 @@ export default function Conversations() {
             </div>
           </div>
 
-          {/* Message */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#4a5568' }}>Message</label>
-              <span style={{ fontSize: 11, color: broadcastMsg.length > 1000 ? '#c53030' : '#a0aec0' }}>{broadcastMsg.length}/1000</span>
-            </div>
-            <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} maxLength={1000} rows={3}
-              placeholder="Type your broadcast message…"
-              style={{ width: '100%', padding: '8px 12px', fontSize: 13, borderRadius: 6, border: '1px solid #cbd5e0', resize: 'vertical', boxSizing: 'border-box', outline: 'none', fontFamily: 'sans-serif' }} />
-          </div>
-
           {broadcastResult && (
             <div style={{ padding: '8px 12px', borderRadius: 6, background: '#f0fff4', border: '1px solid #9ae6b4', fontSize: 13, color: '#276749', marginBottom: 10 }}>
               ✅ Sent to {broadcastResult.sent} contact{broadcastResult.sent !== 1 ? 's' : ''}{broadcastResult.failed > 0 ? ` · ${broadcastResult.failed} failed` : ''}
@@ -361,8 +433,8 @@ export default function Conversations() {
           )}
 
           <button onClick={sendBroadcast}
-            disabled={broadcasting || !broadcastMsg.trim() || selectedRecipients.size === 0}
-            style={{ ...primaryBtn, opacity: (broadcasting || !broadcastMsg.trim() || selectedRecipients.size === 0) ? 0.6 : 1 }}>
+            disabled={broadcasting || !selectedTemplate || selectedRecipients.size === 0}
+            style={{ ...primaryBtn, opacity: (broadcasting || !selectedTemplate || selectedRecipients.size === 0) ? 0.6 : 1 }}>
             {broadcasting ? '⏳ Sending…' : `📤 Send to ${selectedRecipients.size} contact${selectedRecipients.size !== 1 ? 's' : ''}`}
           </button>
         </div>

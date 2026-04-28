@@ -369,57 +369,59 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // POST /dashboard/broadcast — send a message to multiple WhatsApp numbers
+  // POST /dashboard/broadcast — send a message to multiple WhatsApp numbers using an approved template
   app.post('/dashboard/broadcast', { preHandler: authenticate }, async (request, reply) => {
-    const { message, recipients } = request.body as {
-      message: string;
+    const { templateName, templateParams, recipients } = request.body as {
+      templateName: string;
+      templateParams: string[];
       recipients: string[];
     };
-    if (!message?.trim()) return reply.status(400).send({ error: 'message is required.' });
+    if (!templateName?.trim()) return reply.status(400).send({ error: 'templateName is required.' });
     if (!Array.isArray(recipients) || recipients.length === 0) {
       return reply.status(400).send({ error: 'recipients must be a non-empty array.' });
-    }
-    if (message.length > 1000) {
-      return reply.status(400).send({ error: 'Message must be 1000 characters or less.' });
     }
     if (recipients.length > 100) {
       return reply.status(400).send({ error: 'Maximum 100 recipients per broadcast.' });
     }
     try {
       const { templateService } = await import('../whatsapp/template.service.js');
-      const { sendWithTemplateFallback, sendMessage } = await import('../../modules/whatsapp/message-dispatcher.js');
 
-      // Check if broadcast_message template is approved
-      const broadcastTemplate = await templateService.getTemplate(request.businessId, 'broadcast_message');
-      const templateApproved = broadcastTemplate?.status === 'APPROVED';
-
-      // If no approved template exists, block the broadcast — Meta requires templates for business-initiated messages
-      if (!templateApproved) {
+      // Verify the selected template is approved
+      const template = await templateService.getTemplate(request.businessId, templateName);
+      if (!template) {
+        return reply.status(404).send({ error: `Template '${templateName}' not found.` });
+      }
+      if (template.status !== 'APPROVED') {
         return reply.status(403).send({
-          error: 'Broadcast requires an approved "broadcast_message" WhatsApp template. Go to WhatsApp Setup → Templates to submit it for Meta approval.',
-          templateStatus: broadcastTemplate?.status ?? 'NOT_FOUND',
-          action: 'Submit the broadcast_message template for Meta approval first.',
+          error: `Template '${templateName}' is not approved (status: ${template.status}). Submit it for Meta approval first.`,
+          templateStatus: template.status,
         });
       }
 
-      const results: Array<{ number: string; status: 'sent' | 'failed'; usedTemplate?: boolean; error?: string }> = [];
+      const results: Array<{ number: string; status: 'sent' | 'failed'; error?: string }> = [];
       for (const number of recipients) {
-        try {
-          // Use approved broadcast_message template — strict mode
-          const result = await templateService.sendTemplateMessage(
-            request.businessId, number, 'broadcast_message',
-            ['there', message, ''],
-          );
-          results.push({ number, status: result.success ? 'sent' : 'failed', usedTemplate: true, error: result.error });
-        } catch (err) {
-          results.push({ number, status: 'failed', error: err instanceof Error ? err.message : 'Failed' });
-        }
+        const result = await templateService.sendTemplateMessage(
+          request.businessId, number, templateName, templateParams ?? [],
+        );
+        results.push({ number, status: result.success ? 'sent' : 'failed', error: result.error });
       }
       const sent = results.filter(r => r.status === 'sent').length;
       const failed = results.filter(r => r.status === 'failed').length;
-      return reply.send({ sent, failed, templated: sent, results });
+      return reply.send({ sent, failed, templateName, results });
     } catch (err) {
       return reply.status(500).send({ error: err instanceof Error ? err.message : 'Broadcast failed.' });
+    }
+  });
+
+  // GET /dashboard/broadcast/templates — list approved templates available for broadcast
+  app.get('/dashboard/broadcast/templates', { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { templateService } = await import('../whatsapp/template.service.js');
+      const all = await templateService.listTemplates(request.businessId);
+      const approved = all.filter(t => t.status === 'APPROVED');
+      return reply.send({ templates: approved });
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
     }
   });
 }
