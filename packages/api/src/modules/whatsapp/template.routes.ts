@@ -69,7 +69,8 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       return reply.send(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to submit template.';
-      return reply.status(500).send({ error: msg });
+      // Return full error so the UI can show the exact Meta rejection reason
+      return reply.status(400).send({ error: msg, metaError: msg });
     }
   });
 

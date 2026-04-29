@@ -330,10 +330,13 @@ export class TemplateService {
       },
     );
 
-    const body = await res.json() as { id?: string; status?: string; error?: { message?: string } };
+    const body = await res.json() as { id?: string; status?: string; error?: { message?: string; error_user_title?: string; error_user_msg?: string; code?: number } };
 
     if (!res.ok) {
-      throw new Error(body.error?.message ?? `Meta API error ${res.status}`);
+      const metaMsg = body.error?.error_user_msg ?? body.error?.message ?? `Meta API error ${res.status}`;
+      const metaTitle = body.error?.error_user_title ?? '';
+      const metaCode = body.error?.code ?? res.status;
+      throw new Error(`Meta rejected template '${templateName}': [${metaCode}] ${metaTitle ? metaTitle + ' - ' : ''}${metaMsg}`);
     }
 
     const metaTemplateId = body.id ?? '';

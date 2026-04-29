@@ -108,7 +108,8 @@ export default function MessageTemplates() {
       setActionMsg(`✅ Template '${name}' submitted to Meta. Status: ${r.status}`);
       await fetchData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Submit failed');
+      const msg = err instanceof Error ? err.message : 'Submit failed';
+      setActionError(`❌ ${msg}`);
     } finally {
       setSubmitting(null);
     }

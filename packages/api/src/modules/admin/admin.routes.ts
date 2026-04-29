@@ -514,7 +514,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       await logAuditEvent(request.operatorId, 'submit_template', 'template', businessId, { name, ...result });
       return reply.send(result);
     } catch (err) {
-      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed.' });
+      const msg = err instanceof Error ? err.message : 'Failed.';
+      return reply.status(400).send({ error: msg });
     }
   });
 
@@ -531,7 +532,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
           const r = await templateService.submitToMeta(businessId, t.name, t.language);
           results.push({ name: t.name, ...r, success: true });
         } catch (err) {
-          results.push({ name: t.name, success: false, error: err instanceof Error ? err.message : 'Failed' });
+          const errMsg = err instanceof Error ? err.message : 'Failed';
+          results.push({ name: t.name, success: false, error: errMsg });
+          app.log.warn({ businessId, templateName: t.name, error: errMsg }, '[Templates] Submit failed');
         }
         await new Promise(r => setTimeout(r, 1000));
       }
