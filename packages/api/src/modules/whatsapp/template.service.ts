@@ -64,6 +64,7 @@ export interface CreateTemplateInput {
 
 /**
  * Standard templates every business should have.
+ * Meta-compliant: no emoji in headers, no markdown (*bold*), no emoji in body.
  * These cover the core use cases and demonstrate proper template usage to Meta.
  */
 export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
@@ -73,8 +74,8 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'order_confirmation',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '🛒 Order Confirmed',
-    bodyText: 'Hi {{1}}, your order *{{2}}* has been confirmed!\n\n📦 Items: {{3}}\n💰 Total: {{4}}\n\nWe\'ll notify you when it\'s ready. Thank you for shopping with us!',
+    headerText: 'Order Confirmed',
+    bodyText: 'Hi {{1}}, your order {{2}} has been confirmed!\n\nItems: {{3}}\nTotal: {{4}}\n\nWe will notify you when it is ready. Thank you for shopping with us!',
     footerText: 'Reply HELP for support',
     buttons: [{ type: 'QUICK_REPLY', text: 'Track Order' }],
     exampleParams: ['John', 'ORD-ABC123', 'AIRMAX x1', 'USD 50.00'],
@@ -84,8 +85,8 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'payment_receipt',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '✅ Payment Received',
-    bodyText: 'Hi {{1}}, we\'ve received your payment of *{{2}}* for order *{{3}}*.\n\nYour order is now being processed. You\'ll receive an update shortly.',
+    headerText: 'Payment Received',
+    bodyText: 'Hi {{1}}, we have received your payment of {{2}} for order {{3}}.\n\nYour order is now being processed. You will receive an update shortly.',
     footerText: 'Keep this as your receipt',
     exampleParams: ['John', 'USD 50.00', 'ORD-ABC123'],
   },
@@ -94,26 +95,26 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'payment_link',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '💳 Complete Your Payment',
-    bodyText: 'Hi {{1}}, your order *{{2}}* is ready for payment.\n\n💰 Amount: *{{3}}*\n⏱️ Link expires in 15 minutes.\n\nTap the button below to pay securely:',
+    headerText: 'Complete Your Payment',
+    bodyText: 'Hi {{1}}, your order {{2}} is ready for payment.\n\nAmount: {{3}}\nLink expires in 15 minutes.\n\nTap the button below to pay securely.',
     footerText: 'Secure payment powered by Paynow',
-    buttons: [{ type: 'URL', text: 'Pay Now', url: '{{4}}' }],
-    exampleParams: ['John', 'ORD-ABC123', 'USD 50.00', 'https://paynow.co.zw/pay/xxx'],
+    buttons: [{ type: 'QUICK_REPLY', text: 'Pay Now' }],
+    exampleParams: ['John', 'ORD-ABC123', 'USD 50.00'],
   },
 
   {
     name: 'order_status_update',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '📦 Order Update',
-    bodyText: 'Hi {{1}}, your order *{{2}}* status has been updated to: *{{3}}*.\n\n{{4}}',
+    headerText: 'Order Update',
+    bodyText: 'Hi {{1}}, your order {{2}} status has been updated to: {{3}}.\n\n{{4}}',
     exampleParams: ['John', 'ORD-ABC123', 'Shipped', 'Your order is on its way!'],
   },
 
   {
     name: 'payment_link_expired',
     category: 'UTILITY',
-    bodyText: 'Hi {{1}}, your payment link for order *{{2}}* has expired.\n\nPlease start a new order if you\'d like to continue. We\'re here to help!',
+    bodyText: 'Hi {{1}}, your payment link for order {{2}} has expired.\n\nPlease start a new order if you would like to continue. We are here to help!',
     exampleParams: ['John', 'ORD-ABC123'],
   },
 
@@ -121,8 +122,8 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'invoice',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '🧾 Invoice',
-    bodyText: 'Hi {{1}}, here is your invoice for order *{{2}}*.\n\n📋 Items: {{3}}\n💰 Total Due: *{{4}}*\n\n💳 Payment Instructions:\n{{5}}\n\n⚠️ Use *{{2}}* as your payment reference.',
+    headerText: 'Invoice',
+    bodyText: 'Hi {{1}}, here is your invoice for order {{2}}.\n\nItems: {{3}}\nTotal Due: {{4}}\n\nPayment Instructions:\n{{5}}\n\nPlease use {{2}} as your payment reference.',
     footerText: 'Reply PAID once payment is made',
     exampleParams: ['John', 'ORD-ABC123', 'AIRMAX x1 - USD 50.00', 'USD 50.00', 'EcoCash: 0771234567'],
   },
@@ -133,9 +134,9 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'product_announcement',
     category: 'MARKETING',
     headerType: 'IMAGE',
-    bodyText: 'Hi {{1}}! 🎉 We just added *{{2}}* to our catalogue!\n\n{{3}}\n\n💰 Price: *{{4}}*\n\nLimited stock — grab yours now!',
+    bodyText: 'Hi {{1}}! We just added {{2}} to our catalogue!\n\n{{3}}\n\nPrice: {{4}}\n\nLimited stock - grab yours now!',
     buttons: [
-      { type: 'QUICK_REPLY', text: '🛒 Order Now' },
+      { type: 'QUICK_REPLY', text: 'Order Now' },
       { type: 'QUICK_REPLY', text: 'Tell Me More' },
     ],
     exampleParams: ['John', 'AIRMAX Pro', 'Premium quality sneakers in all sizes.', 'USD 65.00'],
@@ -145,8 +146,8 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'promotional_offer',
     category: 'MARKETING',
     headerType: 'TEXT',
-    headerText: '🔥 Special Offer',
-    bodyText: 'Hi {{1}}! Don\'t miss out — *{{2}}* is now available at *{{3}}* (was {{4}}).\n\n⏰ Offer ends {{5}}. Shop now before it\'s gone!',
+    headerText: 'Special Offer',
+    bodyText: 'Hi {{1}}! Do not miss out - {{2}} is now available at {{3}} (was {{4}}).\n\nOffer ends {{5}}. Shop now before it is gone!',
     buttons: [
       { type: 'QUICK_REPLY', text: 'Shop Now' },
       { type: 'QUICK_REPLY', text: 'Not Interested' },
@@ -165,7 +166,7 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
   {
     name: 'reengagement',
     category: 'MARKETING',
-    bodyText: 'Hi {{1}}, we miss you! 👋\n\nIt\'s been a while since your last visit. We have new products you might love.\n\n{{2}}',
+    bodyText: 'Hi {{1}}, we miss you!\n\nIt has been a while since your last visit. We have new products you might love.\n\n{{2}}',
     buttons: [
       { type: 'QUICK_REPLY', text: 'Show Me' },
       { type: 'QUICK_REPLY', text: 'Unsubscribe' },
@@ -179,8 +180,8 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'lead_alert_owner',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '🔥 Hot Lead Alert',
-    bodyText: 'A customer (*{{1}}*) is ready to buy *{{2}}*!\n\nCheck your Conversations dashboard to follow up or take over the chat.',
+    headerText: 'Hot Lead Alert',
+    bodyText: 'A customer ({{1}}) is ready to buy {{2}}!\n\nCheck your Conversations dashboard to follow up or take over the chat.',
     exampleParams: ['263771234567', 'AIRMAX'],
   },
 
@@ -188,8 +189,8 @@ export const PLATFORM_TEMPLATES: Omit<CreateTemplateInput, 'language'>[] = [
     name: 'order_paid_owner',
     category: 'UTILITY',
     headerType: 'TEXT',
-    headerText: '💰 New Order Paid',
-    bodyText: 'New order received!\n\n📋 Ref: *{{1}}*\n👤 Customer: {{2}}\n🛍️ Items: {{3}}\n💰 Total: *{{4}}*\n\nCheck your Orders dashboard.',
+    headerText: 'New Order Paid',
+    bodyText: 'New order received!\n\nRef: {{1}}\nCustomer: {{2}}\nItems: {{3}}\nTotal: {{4}}\n\nCheck your Orders dashboard.',
     exampleParams: ['ORD-ABC123', '263771234567', 'AIRMAX x1', 'USD 50.00'],
   },
 ];
@@ -482,11 +483,9 @@ export class TemplateService {
   async seedPlatformTemplates(businessId: string): Promise<number> {
     let created = 0;
     for (const tmpl of PLATFORM_TEMPLATES) {
-      const existing = await this.getTemplate(businessId, tmpl.name);
-      if (!existing) {
-        await this.upsertTemplate(businessId, { ...tmpl, language: 'en_US' });
-        created++;
-      }
+      // Always upsert — this updates existing templates with Meta-compliant versions
+      await this.upsertTemplate(businessId, { ...tmpl, language: 'en_US' });
+      created++;
     }
     return created;
   }

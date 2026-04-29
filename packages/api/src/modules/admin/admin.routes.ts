@@ -533,7 +533,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         } catch (err) {
           results.push({ name: t.name, success: false, error: err instanceof Error ? err.message : 'Failed' });
         }
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 1000));
       }
       const submitted = results.filter(r => r.success).length;
       await logAuditEvent(request.operatorId, 'submit_all_templates', 'business', businessId, { submitted });

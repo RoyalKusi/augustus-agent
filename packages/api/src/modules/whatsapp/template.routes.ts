@@ -148,8 +148,8 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
         } catch (err) {
           results.push({ name: t.name, success: false, error: err instanceof Error ? err.message : 'Failed' });
         }
-        // Small delay to avoid rate limiting
-        await new Promise(r => setTimeout(r, 500));
+        // Delay between submissions to respect Meta rate limits (1 per second)
+        await new Promise(r => setTimeout(r, 1000));
       }
 
       const submitted = results.filter(r => r.success).length;
