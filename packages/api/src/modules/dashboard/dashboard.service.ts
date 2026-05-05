@@ -62,7 +62,7 @@ export async function getSubscriptionOverview(businessId: string): Promise<Subsc
   const planName = sub?.plan ? sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1) : 'None';
   const renewalDate = sub?.renewal_date ? sub.renewal_date.toISOString() : null;
   const creditUsageUsd = usage ? Number(usage.accumulated_cost_usd) : 0;
-  const creditCapUsd = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 12;
+  const creditCapUsd = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 0;
   const creditUsagePercent = creditCapUsd > 0 ? Math.round((creditUsageUsd / creditCapUsd) * 10000) / 100 : 0;
 
   return { planName, renewalDate, creditUsageUsd, creditCapUsd, creditUsagePercent };
@@ -109,7 +109,7 @@ export async function getCreditUsage(businessId: string): Promise<CreditUsage> {
   const row = usageResult.rows[0];
   const sub = subResult.rows[0];
   const currentCostUsd = row ? Number(row.accumulated_cost_usd) : 0;
-  const monthlyCap = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 12;
+  const monthlyCap = sub ? getPlan(sub.plan as import('../subscription/plans.js').PlanTier).tokenBudgetUsd : 0;
   const usagePercent = monthlyCap > 0 ? Math.round((currentCostUsd / monthlyCap) * 10000) / 100 : 0;
   const isSuspended = suspendedResult.rows[0]?.suspended === true || currentCostUsd >= monthlyCap;
   const status: 'active' | 'suspended' = isSuspended ? 'suspended' : 'active';
