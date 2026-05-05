@@ -61,10 +61,7 @@ export default function CreditUsageWidget() {
         </svg>
         <span>
           AI Tokens —{' '}
-          <strong style={{ color: '#e2e8f0' }}>{displayPct}%</strong>{' '}
-          <span style={{ color: data.status === 'suspended' ? '#fc8181' : '#68d391' }}>
-            ({data.status})
-          </span>
+          <strong style={{ color: '#e2e8f0' }}>{displayPct}%</strong>
         </span>
       </div>
       <div style={{ fontSize: 11, color: '#718096', marginBottom: 5 }}>
