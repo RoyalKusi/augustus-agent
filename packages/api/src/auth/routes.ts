@@ -46,7 +46,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // POST /auth/request-password-reset
   app.post('/auth/request-password-reset', async (request, reply) => {
     const { email } = request.body as { email: string };
-    await authService.requestPasswordReset(email).catch(() => {/* swallow — no enumeration */});
+    await authService.requestPasswordReset(email).catch((err) => {
+      app.log.error({ err, email }, '[auth] requestPasswordReset failed');
+    });
     return reply.send({ message: 'If that email is registered, a reset link has been sent.' });
   });
 
