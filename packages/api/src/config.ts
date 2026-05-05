@@ -58,8 +58,8 @@ export const config = {
     integrationId: process.env.PAYNOW_INTEGRATION_ID ?? '',
     integrationKey: process.env.PAYNOW_INTEGRATION_KEY ?? '',
     merchantEmail: process.env.PAYNOW_MERCHANT_EMAIL ?? 'payment@augustus.ai',
-    returnUrl: optional('PAYNOW_RETURN_URL', 'https://example.com/payment/return'),
-    resultUrl: optional('PAYNOW_RESULT_URL', 'https://example.com/payment/result'),
+    returnUrl: optional('PAYNOW_RETURN_URL', 'https://augustus.silverconne.com/dashboard/subscription'),
+    resultUrl: optional('PAYNOW_RESULT_URL', 'https://augustus.silverconne.com/webhooks/paynow/subscription'),
   },
 
   email: {

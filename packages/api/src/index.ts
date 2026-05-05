@@ -48,6 +48,12 @@ if (isProdEnv) {
   if (!process.env.EMAIL_API_KEY) {
     console.error('[Config] CRITICAL: EMAIL_API_KEY is not set. No emails will be sent (password reset, verification, etc.).');
   }
+  if (!process.env.PAYNOW_RESULT_URL || process.env.PAYNOW_RESULT_URL.includes('example.com')) {
+    console.warn('[Config] WARNING: PAYNOW_RESULT_URL is not set or uses example.com default. Paynow webhooks will not reach the server — subscriptions will not auto-activate after payment. Set PAYNOW_RESULT_URL=https://augustus.silverconne.com/webhooks/paynow/subscription');
+  }
+  if (!process.env.PAYNOW_RETURN_URL || process.env.PAYNOW_RETURN_URL.includes('example.com')) {
+    console.warn('[Config] WARNING: PAYNOW_RETURN_URL is not set or uses example.com default. Users will not be redirected back after payment. Set PAYNOW_RETURN_URL=https://augustus.silverconne.com/dashboard/subscription');
+  }
 }
 
 const start = async () => {
@@ -80,6 +86,9 @@ const start = async () => {
       emailProvider: process.env.EMAIL_PROVIDER ?? 'sendgrid',
       emailApiKeySet: !!(process.env.EMAIL_API_KEY),
       emailFromAddress: process.env.EMAIL_FROM_ADDRESS ?? 'noreply@augustus.ai',
+      paynowResultUrl: process.env.PAYNOW_RESULT_URL ?? '(not set — defaulting to augustus.silverconne.com/webhooks/paynow/subscription)',
+      paynowReturnUrl: process.env.PAYNOW_RETURN_URL ?? '(not set — defaulting to augustus.silverconne.com/dashboard/subscription)',
+      paynowIntegrationIdSet: !!(process.env.PAYNOW_INTEGRATION_ID),
       nodeEnv: process.env.NODE_ENV ?? 'development',
     }));
 

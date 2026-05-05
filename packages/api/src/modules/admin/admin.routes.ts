@@ -155,6 +155,48 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // POST /admin/businesses/:id/activate-subscription — manually activate a subscription
+  // Used when Paynow webhook failed to fire (e.g. PAYNOW_RESULT_URL misconfigured)
+  app.post('/admin/businesses/:id/activate-subscription', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { tier, billingMonths, paynowReference } = request.body as {
+      tier?: string;
+      billingMonths?: number;
+      paynowReference?: string;
+    };
+
+    if (!tier || !['silver', 'gold', 'platinum'].includes(tier)) {
+      return reply.status(400).send({ error: 'tier is required and must be silver, gold, or platinum.' });
+    }
+
+    try {
+      const { activateSubscription } = await import('../subscription/subscription.service.js');
+      const { isValidTier } = await import('../subscription/plans.js');
+
+      if (!isValidTier(tier)) {
+        return reply.status(400).send({ error: 'Invalid tier.' });
+      }
+
+      const ref = paynowReference ?? `MANUAL-ADMIN-${id.slice(0, 8)}-${Date.now()}`;
+      const months = Math.max(1, Math.floor(Number(billingMonths) || 1));
+
+      const sub = await activateSubscription(id, tier, ref, months);
+
+      await logAuditEvent(request.operatorId, 'manual_subscription_activation', id, {
+        tier,
+        billingMonths: months,
+        paynowReference: ref,
+        subscriptionId: sub.id,
+      });
+
+      return reply.send({ message: `${tier} subscription activated.`, subscription: sub });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Activation failed.';
+      const status = message.includes('not found') ? 404 : 400;
+      return reply.status(status).send({ error: message });
+    }
+  });
+
   // ─── Task 13.6: AI metrics ──────────────────────────────────────────────────
 
   // GET /admin/metrics/ai
