@@ -22,12 +22,17 @@ export default function ResetPassword() {
         body: JSON.stringify({ token, newPassword: password }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? 'Reset failed');
+        let message = 'Reset failed. Please try again.';
+        try {
+          const data = await res.json() as { error?: string };
+          if (data.error) message = data.error;
+        } catch { /* ignore parse errors */ }
+        throw new Error(message);
       }
       navigate('/login', { state: { message: 'Password reset successfully. Please log in.' } });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Reset failed.');
+      const msg = err instanceof Error ? err.message : 'Reset failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -45,7 +50,14 @@ export default function ResetPassword() {
   return (
     <div style={containerStyle}>
       <h2>Reset Password</h2>
-      {error && <p style={{ color: '#c53030' }}>{error}</p>}
+      {error && (
+        <p style={{ color: '#c53030' }}>
+          {error}
+          {(error.toLowerCase().includes('expired') || error.toLowerCase().includes('invalid')) && (
+            <> — <Link to="/forgot-password">request a new link</Link></>
+          )}
+        </p>
+      )}
       <form onSubmit={submit} style={formStyle}>
         <label>New Password</label>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inputStyle} placeholder="Min 8 chars, upper, lower, digit" />
