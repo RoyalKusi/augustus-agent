@@ -228,7 +228,14 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const businessId = result.rows[0].id;
   const token = crypto.randomBytes(32).toString('hex');
   await redis.set(`pwd_reset:${token}`, businessId, 'EX', PWD_RESET_TTL);
-  await sendPasswordResetEmail(email, token);
+
+  // Fire-and-forget — do NOT await the email send.
+  // Awaiting it blocks the HTTP response until SendGrid replies (up to 10s),
+  // causing 504 Gateway Timeout on Hostinger. The token is already stored in
+  // Redis so the reset link will work regardless of when the email arrives.
+  sendPasswordResetEmail(email, token).catch((err) => {
+    console.error(`[Auth] Failed to send password reset email to ${email}:`, err?.message ?? err);
+  });
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
