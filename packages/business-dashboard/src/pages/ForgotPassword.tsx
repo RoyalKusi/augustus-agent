@@ -18,12 +18,17 @@ export default function ForgotPassword() {
         body: JSON.stringify({ email }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? 'Request failed');
+        let message = 'Request failed. Please try again.';
+        try {
+          const data = await res.json() as { error?: string };
+          if (data.error) message = data.error;
+        } catch { /* ignore parse errors */ }
+        throw new Error(message);
       }
       setSuccess(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Request failed');
+      const msg = err instanceof Error ? err.message : 'Request failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
