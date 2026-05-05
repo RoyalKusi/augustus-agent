@@ -182,7 +182,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
       const sub = await activateSubscription(id, tier, ref, months);
 
-      await logAuditEvent(request.operatorId, 'manual_subscription_activation', id, {
+      await logAuditEvent(request.operatorId, 'manual_subscription_activation', 'business', id, {
         tier,
         billingMonths: months,
         paynowReference: ref,
