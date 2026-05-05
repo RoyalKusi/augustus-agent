@@ -493,6 +493,9 @@ describe('Subscription flow — mock end-to-end', () => {
         if (sql.includes('FROM token_usage')) {
           return { rows: [{ accumulated_cost_usd: '0.000000' }] };
         }
+        if (sql.includes('FROM plan_config')) {
+          return { rows: [{ token_budget_usd: '12.00' }] };
+        }
         return { rows: [] };
       });
 
@@ -513,6 +516,9 @@ describe('Subscription flow — mock end-to-end', () => {
         if (sql.includes('FROM token_usage')) {
           return { rows: [{ accumulated_cost_usd: '5.000000' }] };
         }
+        if (sql.includes('FROM plan_config')) {
+          return { rows: [{ token_budget_usd: '30.00' }] };
+        }
         return { rows: [] };
       });
 
@@ -532,6 +538,9 @@ describe('Subscription flow — mock end-to-end', () => {
         if (sql.includes('FROM token_usage')) {
           return { rows: [{ accumulated_cost_usd: '0.000000' }] };
         }
+        if (sql.includes('FROM plan_config')) {
+          return { rows: [{ token_budget_usd: '70.00' }] };
+        }
         return { rows: [] };
       });
 
@@ -539,6 +548,27 @@ describe('Subscription flow — mock end-to-end', () => {
 
       expect(result.planName).toBe('Platinum');
       expect(result.creditCapUsd).toBe(70);
+    });
+
+    it('uses DB value when plan_config has a custom token budget', async () => {
+      // Operator has changed Silver token budget to 20 in the DB
+      mockQuery.mockImplementation((sql: string) => {
+        if (sql.includes('FROM subscriptions')) {
+          return { rows: [{ plan: 'silver', renewal_date: new Date('2026-06-05') }] };
+        }
+        if (sql.includes('FROM token_usage')) {
+          return { rows: [{ accumulated_cost_usd: '10.000000' }] };
+        }
+        if (sql.includes('FROM plan_config')) {
+          return { rows: [{ token_budget_usd: '20.00' }] }; // custom value
+        }
+        return { rows: [] };
+      });
+
+      const result = await getSubscriptionOverview('biz-001');
+
+      expect(result.creditCapUsd).toBe(20);  // DB value, not hardcoded 12
+      expect(result.creditUsagePercent).toBe(50); // 10/20 = 50%
     });
   });
 
@@ -570,6 +600,7 @@ describe('Subscription flow — mock end-to-end', () => {
         if (sql.includes('FROM token_usage') || sql.includes('accumulated_cost_usd')) {
           return { rows: [{ accumulated_cost_usd: '5.000000' }] };
         }
+        // plan_config not queried when no subscription
         return { rows: [] };
       });
 
@@ -578,6 +609,25 @@ describe('Subscription flow — mock end-to-end', () => {
       // No subscription → cap is 0 → percent must be 0 (no division by zero)
       expect(result.creditCapUsd).toBe(0);
       expect(result.creditUsagePercent).toBe(0);
+    });
+
+    it('falls back to hardcoded value when plan_config has no row for the tier', async () => {
+      mockQuery.mockImplementation((sql: string) => {
+        if (sql.includes('FROM subscriptions')) {
+          return { rows: [{ plan: 'silver', renewal_date: new Date('2026-06-05') }] };
+        }
+        if (sql.includes('FROM token_usage')) {
+          return { rows: [{ accumulated_cost_usd: '0.000000' }] };
+        }
+        if (sql.includes('FROM plan_config')) {
+          return { rows: [] }; // no row in DB — fall back to hardcoded
+        }
+        return { rows: [] };
+      });
+
+      const result = await getSubscriptionOverview('biz-001');
+
+      expect(result.creditCapUsd).toBe(12); // hardcoded Silver fallback
     });
   });
 });
