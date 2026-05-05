@@ -39,6 +39,17 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Process] Unhandled rejection:', reason);
 });
 
+// Warn loudly if critical env vars are missing or still at localhost defaults
+const isProdEnv = process.env.NODE_ENV === 'production';
+if (isProdEnv) {
+  if (!process.env.FRONTEND_URL || process.env.FRONTEND_URL.includes('localhost')) {
+    console.error('[Config] CRITICAL: FRONTEND_URL is not set or points to localhost. Password reset and verification emails will contain broken links. Set FRONTEND_URL=https://augustus.silverconne.com on Hostinger.');
+  }
+  if (!process.env.EMAIL_API_KEY) {
+    console.error('[Config] CRITICAL: EMAIL_API_KEY is not set. No emails will be sent (password reset, verification, etc.).');
+  }
+}
+
 const start = async () => {
   try {
     const app = Fastify({ logger: true });
@@ -64,6 +75,13 @@ const start = async () => {
 
     app.get('/health', async () => ({ status: 'ok', service: 'augustus-api' }));
     app.get('/health/consumer', async () => ({ consumerRunning, consumers: CONSUMER_NAME }));
+    app.get('/health/config', async () => ({
+      frontendUrl: process.env.FRONTEND_URL ?? '(not set — defaulting to localhost:5173)',
+      emailProvider: process.env.EMAIL_PROVIDER ?? 'sendgrid',
+      emailApiKeySet: !!(process.env.EMAIL_API_KEY),
+      emailFromAddress: process.env.EMAIL_FROM_ADDRESS ?? 'noreply@augustus.ai',
+      nodeEnv: process.env.NODE_ENV ?? 'development',
+    }));
 
     // Diagnostic: list conversations and their actual message counts
     app.get('/diag/conversations', async (_req, reply) => {

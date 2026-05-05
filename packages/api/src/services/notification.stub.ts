@@ -16,8 +16,22 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
   await sendEmail(
     email,
     'Reset your Augustus password',
-    `<h2>Password Reset</h2><p>Click <a href="${link}">here</a> to reset your password.</p><p>This link expires in 60 minutes.</p>`,
-    `Reset your Augustus password:\n\n${link}\n\nThis link expires in 60 minutes.`,
+    `<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a202c;">
+  <h2 style="margin-bottom:8px;">Reset your password</h2>
+  <p>We received a request to reset the password for your Augustus account.</p>
+  <p>Click the button below to choose a new password. This link expires in <strong>60 minutes</strong>.</p>
+  <p style="margin:24px 0;">
+    <a href="${link}" style="background:#3182ce;color:#ffffff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Reset Password</a>
+  </p>
+  <p style="font-size:13px;color:#718096;">If the button doesn't work, copy and paste this link into your browser:</p>
+  <p style="font-size:13px;word-break:break-all;color:#3182ce;">${link}</p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
+  <p style="font-size:12px;color:#a0aec0;">If you didn't request a password reset, you can safely ignore this email. Your password will not change.</p>
+</body>
+</html>`,
+    `Reset your Augustus password\n\nClick the link below to reset your password (expires in 60 minutes):\n\n${link}\n\nIf you didn't request this, ignore this email.`,
   );
 }
 
