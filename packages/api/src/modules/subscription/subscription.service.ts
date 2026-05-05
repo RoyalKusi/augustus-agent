@@ -80,6 +80,18 @@ export async function activateSubscription(
   const renewalDate = new Date(now);
   renewalDate.setMonth(renewalDate.getMonth() + Math.max(1, billingMonths));
 
+  // Resolve price from plan_config DB (operator-configurable), fall back to hardcoded
+  let priceUsd = plan.priceUsd;
+  try {
+    const dbPlan = await pool.query<{ price_usd: string }>(
+      `SELECT price_usd FROM plan_config WHERE tier = $1`,
+      [tier],
+    );
+    if (dbPlan.rows.length > 0) {
+      priceUsd = Number(dbPlan.rows[0].price_usd);
+    }
+  } catch { /* use hardcoded fallback */ }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -97,7 +109,7 @@ export async function activateSubscription(
           billing_cycle_start, paynow_reference, billing_months)
        VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)
        RETURNING *`,
-      [businessId, tier, plan.priceUsd, now, renewalDate, cycleStart, paynowReference, Math.max(1, billingMonths)],
+      [businessId, tier, priceUsd, now, renewalDate, cycleStart, paynowReference, Math.max(1, billingMonths)],
     );
 
     // Ensure business status is active
@@ -150,7 +162,7 @@ export async function activateSubscription(
     const { notifySubscriptionUpdate } = await import('../notification/in-app-notification.helpers.js');
     void notifySubscriptionUpdate(businessId, 'renewed', {
       planName: tier,
-      amount: plan.priceUsd,
+      amount: priceUsd,
       renewalDate,
     }).catch(err => console.error('[Subscription] Failed to send notification:', err));
     
