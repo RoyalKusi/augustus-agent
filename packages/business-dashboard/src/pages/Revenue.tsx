@@ -7,6 +7,17 @@ interface RevenueBalance {
   lifetimeUsd?: number;
 }
 
+interface RevenueSummary {
+  totalRevenue: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  currency: string;
+  availableBalanceUsd: number;
+  lifetimeBalanceUsd: number;
+  referralEarningsUsd: number;
+  orderRevenueUsd: number;
+}
+
 interface WithdrawalItem {
   id: string;
   amountUsd: number;
@@ -50,6 +61,8 @@ function formatMethod(m: PaymentMethod): string {
 export default function Revenue() {
   const [availableUsd, setAvailableUsd] = useState<number | null>(null);
   const [lifetimeUsd, setLifetimeUsd] = useState<number | null>(null);
+  const [referralEarningsUsd, setReferralEarningsUsd] = useState<number>(0);
+  const [orderRevenueUsd, setOrderRevenueUsd] = useState<number>(0);
   const [withdrawals, setWithdrawals] = useState<WithdrawalItem[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [amount, setAmount] = useState('');
@@ -59,9 +72,19 @@ export default function Revenue() {
   const [loading, setLoading] = useState(false);
 
   const loadBalance = () =>
-    apiFetch<RevenueBalance>('/payments/balance')
-      .then((r) => { const b = r.balance ?? r; setAvailableUsd(b.availableUsd ?? 0); setLifetimeUsd(b.lifetimeUsd ?? 0); })
-      .catch(() => { setAvailableUsd(0); setLifetimeUsd(0); });
+    apiFetch<RevenueSummary>('/dashboard/revenue')
+      .then((r) => {
+        setAvailableUsd(r.availableBalanceUsd ?? 0);
+        setLifetimeUsd(r.lifetimeBalanceUsd ?? 0);
+        setReferralEarningsUsd(r.referralEarningsUsd ?? 0);
+        setOrderRevenueUsd(r.orderRevenueUsd ?? 0);
+      })
+      .catch(() => {
+        // Fallback to payments/balance if revenue endpoint fails
+        apiFetch<RevenueBalance>('/payments/balance')
+          .then((r) => { const b = r.balance ?? r; setAvailableUsd(b.availableUsd ?? 0); setLifetimeUsd(b.lifetimeUsd ?? 0); })
+          .catch(() => { setAvailableUsd(0); setLifetimeUsd(0); });
+      });
 
   const loadWithdrawals = () =>
     apiFetch<{ withdrawals: WithdrawalItem[] }>('/dashboard/withdrawals')
@@ -113,10 +136,21 @@ export default function Revenue() {
         <div style={cardStyle}>
           <p style={{ margin: '0 0 4px', fontSize: 12, color: '#718096', fontWeight: 600 }}>AVAILABLE BALANCE</p>
           <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: '#2d3748' }}>${available.toFixed(2)}</p>
+          {referralEarningsUsd > 0 && (
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#718096' }}>
+              Includes <span style={{ color: '#276749', fontWeight: 600 }}>${referralEarningsUsd.toFixed(2)}</span> referral earnings
+            </p>
+          )}
         </div>
         <div style={cardStyle}>
           <p style={{ margin: '0 0 4px', fontSize: 12, color: '#718096', fontWeight: 600 }}>LIFETIME REVENUE</p>
           <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: '#2d3748' }}>${(lifetimeUsd ?? 0).toFixed(2)}</p>
+          {(orderRevenueUsd > 0 || referralEarningsUsd > 0) && (
+            <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 12, color: '#718096' }}>
+              {orderRevenueUsd > 0 && <span>Orders: <strong>${orderRevenueUsd.toFixed(2)}</strong></span>}
+              {referralEarningsUsd > 0 && <span>Referrals: <strong style={{ color: '#276749' }}>${referralEarningsUsd.toFixed(2)}</strong></span>}
+            </div>
+          )}
         </div>
       </div>
 

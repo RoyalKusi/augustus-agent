@@ -294,30 +294,56 @@ export interface RevenueSummary {
   totalOrders: number;
   averageOrderValue: number;
   currency: string;
+  availableBalanceUsd: number;
+  lifetimeBalanceUsd: number;
+  referralEarningsUsd: number;
+  orderRevenueUsd: number;
 }
 
 export async function getRevenueSummary(businessId: string): Promise<RevenueSummary> {
-  const result = await pool.query<{
-    total_revenue: string;
-    total_orders: string;
-    currency: string;
-  }>(
-    `SELECT
-       COALESCE(SUM(total_amount), 0) AS total_revenue,
-       COUNT(*) AS total_orders,
-       COALESCE(MAX(currency), 'USD') AS currency
-     FROM orders
-     WHERE business_id = $1 AND payment_status = 'completed'`,
-    [businessId],
-  );
+  const [ordersResult, balanceResult, referralResult] = await Promise.all([
+    pool.query<{ total_revenue: string; total_orders: string; currency: string }>(
+      `SELECT
+         COALESCE(SUM(total_amount), 0) AS total_revenue,
+         COUNT(*) AS total_orders,
+         COALESCE(MAX(currency), 'USD') AS currency
+       FROM orders
+       WHERE business_id = $1 AND payment_status = 'completed'`,
+      [businessId],
+    ),
+    pool.query<{ available_usd: string; lifetime_usd: string }>(
+      `SELECT COALESCE(available_usd, 0) AS available_usd,
+              COALESCE(lifetime_usd, 0) AS lifetime_usd
+       FROM revenue_balances WHERE business_id = $1`,
+      [businessId],
+    ),
+    pool.query<{ referral_earnings: string }>(
+      `SELECT COALESCE(SUM(earnings_usd), 0) AS referral_earnings
+       FROM referrals WHERE referrer_id = $1 AND earnings_usd IS NOT NULL`,
+      [businessId],
+    ),
+  ]);
 
-  const row = result.rows[0];
-  const totalRevenue = Number(row.total_revenue);
+  const row = ordersResult.rows[0];
+  const orderRevenueUsd = Number(row.total_revenue);
   const totalOrders = Number(row.total_orders);
-  const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const averageOrderValue = totalOrders > 0 ? orderRevenueUsd / totalOrders : 0;
   const currency = row.currency ?? 'USD';
 
-  return { totalRevenue, totalOrders, averageOrderValue, currency };
+  const availableBalanceUsd = Number(balanceResult.rows[0]?.available_usd ?? 0);
+  const lifetimeBalanceUsd = Number(balanceResult.rows[0]?.lifetime_usd ?? 0);
+  const referralEarningsUsd = Number(referralResult.rows[0]?.referral_earnings ?? 0);
+
+  return {
+    totalRevenue: orderRevenueUsd + referralEarningsUsd,
+    totalOrders,
+    averageOrderValue,
+    currency,
+    availableBalanceUsd,
+    lifetimeBalanceUsd,
+    referralEarningsUsd,
+    orderRevenueUsd,
+  };
 }
 
 // ─── Task 12.8: Orders CSV Export ────────────────────────────────────────────

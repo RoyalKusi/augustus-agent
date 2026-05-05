@@ -48,7 +48,7 @@ export class EarningsService {
 
     const calculatedAt = new Date();
 
-    // Get referrer info for notification
+    // Get referrer info for notification and revenue credit
     const referralInfo = await pool.query<{ referrer_id: string; referred_name: string }>(
       `SELECT referrer_id, referred_name FROM referrals WHERE id = $1`,
       [referralId]
@@ -62,6 +62,20 @@ export class EarningsService {
        WHERE id = $4`,
       [earnings, settings.commissionPercentage, calculatedAt, referralId]
     );
+
+    // Credit earnings to the referrer's revenue_balances so they can withdraw it
+    if (referralInfo.rows.length > 0 && earnings > 0) {
+      const { referrer_id } = referralInfo.rows[0];
+      await pool.query(
+        `INSERT INTO revenue_balances (business_id, available_usd, lifetime_usd)
+         VALUES ($1, $2, $2)
+         ON CONFLICT (business_id) DO UPDATE
+           SET available_usd  = revenue_balances.available_usd  + EXCLUDED.available_usd,
+               lifetime_usd   = revenue_balances.lifetime_usd   + EXCLUDED.lifetime_usd,
+               updated_at     = NOW()`,
+        [referrer_id, earnings],
+      );
+    }
 
     // Send in-app notification for commission earned
     if (referralInfo.rows.length > 0) {
