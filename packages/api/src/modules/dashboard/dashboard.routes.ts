@@ -266,21 +266,48 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const biz = meta.rows[0];
       if (!biz) return reply.status(404).send({ error: 'Business not found.' });
 
-      const referrals = await pool.query(
-        `SELECT id, referred_email, referred_name, status, created_at
-         FROM referrals WHERE referrer_id = $1 ORDER BY created_at DESC`,
+      // Join with subscriptions to get the current plan for each referred business
+      const referrals = await pool.query<{
+        id: string;
+        referred_email: string;
+        referred_name: string;
+        status: string;
+        created_at: Date;
+        earnings_usd: string | null;
+        referred_id: string | null;
+        current_plan: string | null;
+      }>(
+        `SELECT r.id, r.referred_email, r.referred_name, r.status, r.created_at,
+                r.earnings_usd, r.referred_id,
+                s.plan AS current_plan
+         FROM referrals r
+         LEFT JOIN subscriptions s
+           ON s.business_id = r.referred_id AND s.status = 'active'
+         WHERE r.referrer_id = $1
+         ORDER BY r.created_at DESC`,
+        [request.businessId],
+      );
+
+      // Get total earnings
+      const earningsTotals = await pool.query<{ total_earnings: string; subscribed_count: string }>(
+        `SELECT COALESCE(SUM(earnings_usd), 0) AS total_earnings,
+                COUNT(CASE WHEN status = 'subscribed' THEN 1 END) AS subscribed_count
+         FROM referrals WHERE referrer_id = $1`,
         [request.businessId],
       );
 
       return reply.send({
         referralEnabled: biz.referral_enabled,
         referralCode: biz.referral_code ?? null,
-        referrals: referrals.rows.map((r: Record<string, unknown>) => ({
+        totalEarningsUsd: Number(earningsTotals.rows[0]?.total_earnings ?? 0),
+        referrals: referrals.rows.map((r) => ({
           id: r.id,
           referredEmail: r.referred_email,
           referredName: r.referred_name,
           status: r.status,
           createdAt: r.created_at,
+          earningsUsd: r.earnings_usd ? Number(r.earnings_usd) : null,
+          currentPlan: r.current_plan ?? null,
         })),
       });
     } catch (err) {

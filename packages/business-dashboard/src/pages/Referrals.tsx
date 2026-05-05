@@ -7,15 +7,30 @@ interface ReferralEntry {
   referredName: string;
   status: 'registered' | 'subscribed';
   createdAt: string;
+  earningsUsd: number | null;
+  currentPlan: string | null;
 }
 
 interface ReferralData {
   referralEnabled: boolean;
   referralCode: string | null;
+  totalEarningsUsd: number;
   referrals: ReferralEntry[];
 }
 
 const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || window.location.origin;
+
+const PLAN_LABELS: Record<string, string> = {
+  silver: 'Silver',
+  gold: 'Gold',
+  platinum: 'Platinum',
+};
+
+const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
+  silver: { bg: '#c6f6d5', color: '#276749' },
+  gold:   { bg: '#fefcbf', color: '#975a16' },
+  platinum: { bg: '#e9d8fd', color: '#553c9a' },
+};
 
 export default function Referrals() {
   const [data, setData] = useState<ReferralData | null>(null);
@@ -49,6 +64,7 @@ export default function Referrals() {
 
   const totalReferrals = data?.referrals.length ?? 0;
   const subscribed = data?.referrals.filter(r => r.status === 'subscribed').length ?? 0;
+  const totalEarnings = data?.totalEarningsUsd ?? 0;
 
   if (loading) return <div style={{ color: '#718096', padding: 24 }}>Loading…</div>;
 
@@ -68,14 +84,14 @@ export default function Referrals() {
   }
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <div style={{ maxWidth: 680 }}>
       <h2 style={{ marginTop: 0, marginBottom: 4 }}>Referrals</h2>
       <p style={{ color: '#718096', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
-        Share your link and earn rewards when friends sign up.
+        Share your link and earn commission when friends subscribe.
       </p>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 20px' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#a0aec0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Total Referrals</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: '#2d3748' }}>{totalReferrals}</div>
@@ -83,6 +99,12 @@ export default function Referrals() {
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 20px' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#a0aec0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Subscribed</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: '#38a169' }}>{subscribed}</div>
+        </div>
+        <div style={{ background: totalEarnings > 0 ? '#f0fff4' : '#fff', border: `1px solid ${totalEarnings > 0 ? '#9ae6b4' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#a0aec0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Total Earnings</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: totalEarnings > 0 ? '#276749' : '#2d3748' }}>
+            ${totalEarnings.toFixed(2)}
+          </div>
         </div>
       </div>
 
@@ -130,30 +152,64 @@ export default function Referrals() {
                 <th style={th}>Business</th>
                 <th style={th}>Email</th>
                 <th style={th}>Status</th>
+                <th style={th}>Plan</th>
+                <th style={th}>Earnings</th>
                 <th style={th}>Date</th>
               </tr>
             </thead>
             <tbody>
-              {data.referrals.map(r => (
-                <tr key={r.id} style={{ borderTop: '1px solid #e2e8f0' }}>
-                  <td style={td}>{r.referredName}</td>
-                  <td style={td}>{r.referredEmail}</td>
-                  <td style={td}>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
-                      background: r.status === 'subscribed' ? '#c6f6d5' : '#ebf8ff',
-                      color: r.status === 'subscribed' ? '#276749' : '#2b6cb0',
-                    }}>
-                      {r.status === 'subscribed' ? 'Subscribed' : 'Registered'}
-                    </span>
-                  </td>
-                  <td style={td}>{new Date(r.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
+              {data.referrals.map(r => {
+                const planKey = r.currentPlan?.toLowerCase() ?? null;
+                const planStyle = planKey ? (PLAN_COLORS[planKey] ?? { bg: '#e2e8f0', color: '#4a5568' }) : null;
+                return (
+                  <tr key={r.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                    <td style={td}>{r.referredName}</td>
+                    <td style={{ ...td, color: '#718096', fontSize: 12 }}>{r.referredEmail}</td>
+                    <td style={td}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
+                        background: r.status === 'subscribed' ? '#c6f6d5' : '#ebf8ff',
+                        color: r.status === 'subscribed' ? '#276749' : '#2b6cb0',
+                      }}>
+                        {r.status === 'subscribed' ? 'Subscribed' : 'Registered'}
+                      </span>
+                    </td>
+                    <td style={td}>
+                      {planKey && planStyle ? (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
+                          background: planStyle.bg, color: planStyle.color,
+                        }}>
+                          {PLAN_LABELS[planKey] ?? r.currentPlan}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#a0aec0', fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {r.earningsUsd != null && r.earningsUsd > 0 ? (
+                        <span style={{ fontWeight: 600, color: '#276749' }}>${r.earningsUsd.toFixed(2)}</span>
+                      ) : (
+                        <span style={{ color: '#a0aec0', fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ ...td, color: '#718096', fontSize: 12 }}>
+                      {new Date(r.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* Earnings note */}
+      {totalEarnings > 0 && (
+        <div style={{ marginTop: 12, padding: '10px 14px', background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 8, fontSize: 12, color: '#276749' }}>
+          💰 You've earned <strong>${totalEarnings.toFixed(2)}</strong> in referral commissions. Contact support to arrange a payout.
+        </div>
+      )}
     </div>
   );
 }
