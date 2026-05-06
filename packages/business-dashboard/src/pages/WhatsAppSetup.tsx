@@ -177,13 +177,21 @@ export default function WhatsAppSetup() {
         if (data?.type === 'WA_EMBEDDED_SIGNUP') {
           if (data.event === 'FINISH' || data.event === 'SUBMIT') {
             const code = data.data?.code;
+            // Log the full data structure so we can see exactly what Meta sends
+            console.log('[WhatsApp] WA_EMBEDDED_SIGNUP data:', JSON.stringify(data.data));
             if (code) {
               setLoading(true);
               setError('');
               setMsg('Completing WhatsApp connection…');
-              // Meta also sends waba_id and phone_number_id directly in the event data
-              // Pass them to the backend so it doesn't need whatsapp_business_management permission
-              exchangeCode(code, data.data?.waba_id, data.data?.phone_number_id);
+              // Try multiple possible field names Meta uses for WABA ID and Phone Number ID
+              const wabaId = data.data?.waba_id
+                ?? data.data?.wabaId
+                ?? data.data?.business_id
+                ?? data.data?.current_waba_id;
+              const phoneNumberId = data.data?.phone_number_id
+                ?? data.data?.phoneNumberId
+                ?? data.data?.current_phone_number_id;
+              exchangeCode(code, wabaId, phoneNumberId);
             }
           } else if (data.event === 'CANCEL') {
             setError('WhatsApp setup was cancelled. Please try again.');

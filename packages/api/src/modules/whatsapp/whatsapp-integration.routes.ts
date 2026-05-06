@@ -152,6 +152,8 @@ export async function whatsappIntegrationRoutes(app: FastifyInstance): Promise<v
       return reply.status(400).send({ error: 'code is required.' });
     }
 
+    app.log.info({ businessId, providedWabaId, providedPhoneNumberId, hasCode: !!code }, '[WhatsApp] exchange-token called');
+
     try {
       const result = await exchangeEmbeddedSignupCode(businessId, code, providedWabaId, providedPhoneNumberId);
       void (async () => {

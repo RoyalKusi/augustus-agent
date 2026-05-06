@@ -407,21 +407,55 @@ export async function exchangeEmbeddedSignupCode(
   let wabaId: string | undefined = providedWabaId;
 
   if (!wabaId) {
-    const appToken = `${appId}|${appSecret}`;
-    const debugRes = await fetch(
-      `https://graph.facebook.com/${graphVersion}/debug_token?input_token=${access_token}&access_token=${encodeURIComponent(appToken)}`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
-    const debugData = (await debugRes.json()) as {
-      data?: {
-        granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
+    // Try debug_token first (requires whatsapp_business_management)
+    try {
+      const appToken = `${appId}|${appSecret}`;
+      const debugRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/debug_token?input_token=${access_token}&access_token=${encodeURIComponent(appToken)}`,
+        { signal: AbortSignal.timeout(15_000) },
+      );
+      const debugData = (await debugRes.json()) as {
+        data?: {
+          granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
+          scopes?: string[];
+        };
       };
-    };
 
-    const wabaScope = debugData?.data?.granular_scopes?.find(
-      (s) => s.scope === 'whatsapp_business_management',
-    );
-    wabaId = wabaScope?.target_ids?.[0];
+      const wabaScope = debugData?.data?.granular_scopes?.find(
+        (s) => s.scope === 'whatsapp_business_management',
+      );
+      wabaId = wabaScope?.target_ids?.[0];
+
+      // Log what scopes we got for debugging
+      console.log('[WhatsApp] debug_token scopes:', JSON.stringify(debugData?.data?.granular_scopes?.map(s => ({ scope: s.scope, ids: s.target_ids }))));
+    } catch (debugErr) {
+      console.warn('[WhatsApp] debug_token call failed:', debugErr);
+    }
+  }
+
+  if (!wabaId) {
+    // Fallback: try to get WABA via /me/businesses endpoint (requires business_management scope)
+    try {
+      const bizRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/me/businesses?fields=id,name,whatsapp_business_accounts{id,name}`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (bizRes.ok) {
+        const bizData = (await bizRes.json()) as {
+          data?: Array<{
+            id: string;
+            whatsapp_business_accounts?: { data?: Array<{ id: string }> };
+          }>;
+        };
+        console.log('[WhatsApp] /me/businesses response:', JSON.stringify(bizData?.data?.slice(0, 2)));
+        wabaId = bizData?.data?.[0]?.whatsapp_business_accounts?.data?.[0]?.id;
+      }
+    } catch (bizErr) {
+      console.warn('[WhatsApp] /me/businesses call failed:', bizErr);
+    }
   }
 
   if (!wabaId) {
