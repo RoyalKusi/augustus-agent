@@ -380,6 +380,7 @@ export async function exchangeEmbeddedSignupCode(
   code: string,
   providedWabaId?: string,
   providedPhoneNumberId?: string,
+  businessPortfolioId?: string,
 ): Promise<ExchangeTokenResult> {
   const graphVersion = config.meta.graphApiVersion;
   const appId = config.meta.appId;
@@ -405,7 +406,30 @@ export async function exchangeEmbeddedSignupCode(
   // This avoids needing the whatsapp_business_management permission (which may be under review).
   // Only fall back to debug_token if the WABA ID was not provided.
   let wabaId: string | undefined = providedWabaId;
-  console.log(`[WhatsApp] exchangeEmbeddedSignupCode called — providedWabaId=${providedWabaId ?? 'NOT PROVIDED'}, providedPhoneNumberId=${providedPhoneNumberId ?? 'NOT PROVIDED'}`);
+  console.log(`[WhatsApp] exchangeEmbeddedSignupCode called — providedWabaId=${providedWabaId ?? 'NOT PROVIDED'}, providedPhoneNumberId=${providedPhoneNumberId ?? 'NOT PROVIDED'}, businessPortfolioId=${businessPortfolioId ?? 'NOT PROVIDED'}`);
+
+  if (!wabaId && businessPortfolioId) {
+    // Use business_id from postMessage to look up owned WABAs — only needs business_management scope
+    try {
+      const ownedRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${businessPortfolioId}/owned_whatsapp_business_accounts?fields=id,name`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (ownedRes.ok) {
+        const ownedData = (await ownedRes.json()) as { data?: Array<{ id: string }> };
+        console.log('[WhatsApp] owned_whatsapp_business_accounts:', JSON.stringify(ownedData?.data?.slice(0, 3)));
+        wabaId = ownedData?.data?.[0]?.id;
+      } else {
+        const errBody = await ownedRes.text().catch(() => '');
+        console.warn(`[WhatsApp] owned_whatsapp_business_accounts failed (${ownedRes.status}): ${errBody}`);
+      }
+    } catch (ownedErr) {
+      console.warn('[WhatsApp] owned_whatsapp_business_accounts call failed:', ownedErr);
+    }
+  }
 
   if (!wabaId) {
     // Try debug_token first (requires whatsapp_business_management)

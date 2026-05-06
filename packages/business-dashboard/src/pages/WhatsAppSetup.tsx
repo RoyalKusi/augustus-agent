@@ -184,10 +184,12 @@ export default function WhatsAppSetup() {
               setLoading(true);
               setError('');
               setMsg('Completing WhatsApp connection…');
-              // waba_id and phone_number_id are always present on successful completion
+              // waba_id and phone_number_id are always present on successful completion per Meta docs
               const wabaId = data.data?.waba_id ?? data.data?.wabaId;
               const phoneNumberId = data.data?.phone_number_id ?? data.data?.phoneNumberId;
-              exchangeCode(code, wabaId, phoneNumberId);
+              // business_id (portfolio ID) is also always present — used as fallback to discover WABA
+              const businessPortfolioId = data.data?.business_id;
+              exchangeCode(code, wabaId, phoneNumberId, businessPortfolioId);
             }
           } else if (data.event === 'CANCEL') {
             setError('WhatsApp setup was cancelled. Please try again.');
@@ -204,7 +206,7 @@ export default function WhatsAppSetup() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const exchangeCode = (code: string, wabaId?: string, phoneNumberId?: string) => {
+  const exchangeCode = (code: string, wabaId?: string, phoneNumberId?: string, businessPortfolioId?: string) => {
     apiFetch<Integration & {
       webhookStatus: string;
       registrationStatus: string;
@@ -213,7 +215,7 @@ export default function WhatsAppSetup() {
       codeVerificationStatus: string;
       nameStatus: string;
     }>('/whatsapp/integration/exchange-token', {
-      method: 'POST', body: JSON.stringify({ code, wabaId, phoneNumberId }),
+      method: 'POST', body: JSON.stringify({ code, wabaId, phoneNumberId, businessPortfolioId }),
     }).then((result) => {
       setIntegration({ ...result, status: result.webhookStatus === 'active' ? 'active' : result.status });
       setView('main');
@@ -425,11 +427,10 @@ export default function WhatsAppSetup() {
               <button onClick={handleEmbeddedSignup} disabled={loading} style={{ ...primaryBtn, fontSize: 15, padding: '12px 24px' }}>
                 {loading ? 'Connecting…' : '🔗  Connect WhatsApp Business'}
               </button>
-              <div style={{ marginTop: 16, padding: '12px 14px', background: '#fffbeb', border: '1px solid #f6e05e', borderRadius: 8, fontSize: 13, color: '#744210' }}>
-                <strong>Having trouble?</strong> If the guided setup fails, you can{' '}
-                <button onClick={() => setView('manual')} style={linkBtn}>enter your credentials manually</button>
-                {' '}using your WABA ID and Phone Number ID from Meta Business Manager.
-              </div>
+              <p style={{ marginTop: 16, fontSize: 13, color: '#a0aec0' }}>
+                Already have credentials?{' '}
+                <button onClick={() => setView('manual')} style={linkBtn}>Enter them manually</button>
+              </p>
             </>
           ) : (
             <>
