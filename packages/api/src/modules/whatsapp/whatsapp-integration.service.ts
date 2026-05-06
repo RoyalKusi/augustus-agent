@@ -428,31 +428,70 @@ export async function exchangeEmbeddedSignupCode(
     throw new Error('No WhatsApp Business Account found. Please ensure you completed the Meta setup and granted the required permissions.');
   }
 
-  // Step 3: Get phone number from WABA with verification status
-  // If the phone number ID was provided directly by the frontend, we can still fetch
-  // the display name and verification status, but use the provided ID as the primary source.
-  const phoneRes = await fetch(
-    `https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,name_status`,
-    {
-      headers: { Authorization: `Bearer ${access_token}` },
-      signal: AbortSignal.timeout(15_000),
-    },
-  );
-  const phoneData = (await phoneRes.json()) as {
-    data?: Array<{
-      id: string;
-      display_phone_number: string;
-      verified_name: string;
-      code_verification_status?: string;
-      name_status?: string;
-    }>;
-  };
+  // Step 3: Get phone number details from WABA.
+  // If both wabaId and phoneNumberId were provided by the frontend (from postMessage),
+  // we can skip the phone_numbers API call entirely — it requires whatsapp_business_management.
+  // We'll use the provided IDs directly and fetch display details only if needed.
+  let phone: { id: string; display_phone_number: string; verified_name: string; code_verification_status?: string; name_status?: string } | undefined;
 
-  // If a specific phone number ID was provided, prefer that one; otherwise use the first
-  let phone = phoneData?.data?.[0];
-  if (providedPhoneNumberId && phoneData?.data) {
-    const match = phoneData.data.find(p => p.id === providedPhoneNumberId);
-    if (match) phone = match;
+  if (providedPhoneNumberId && providedWabaId) {
+    // Both IDs provided — use them directly without an API call
+    // Display name and verification status will be fetched best-effort
+    phone = {
+      id: providedPhoneNumberId,
+      display_phone_number: '',
+      verified_name: '',
+      code_verification_status: 'VERIFIED',
+      name_status: 'APPROVED',
+    };
+
+    // Try to enrich with display details — non-fatal if it fails
+    try {
+      const phoneRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,name_status`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (phoneRes.ok) {
+        const phoneData = (await phoneRes.json()) as {
+          data?: Array<{
+            id: string;
+            display_phone_number: string;
+            verified_name: string;
+            code_verification_status?: string;
+            name_status?: string;
+          }>;
+        };
+        const match = phoneData?.data?.find(p => p.id === providedPhoneNumberId) ?? phoneData?.data?.[0];
+        if (match) phone = match;
+      }
+    } catch {
+      // Non-fatal — proceed with the provided IDs
+      console.warn('[WhatsApp] Could not fetch phone number details (non-fatal), using provided IDs');
+    }
+  } else {
+    // No phone number ID provided — must fetch from API
+    const phoneRes = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,name_status`,
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    const phoneData = (await phoneRes.json()) as {
+      data?: Array<{
+        id: string;
+        display_phone_number: string;
+        verified_name: string;
+        code_verification_status?: string;
+        name_status?: string;
+      }>;
+    };
+    phone = providedPhoneNumberId
+      ? phoneData?.data?.find(p => p.id === providedPhoneNumberId) ?? phoneData?.data?.[0]
+      : phoneData?.data?.[0];
   }
 
   if (!phone) {
