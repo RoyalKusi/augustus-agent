@@ -406,6 +406,7 @@ export async function exchangeEmbeddedSignupCode(
   // This avoids needing the whatsapp_business_management permission (which may be under review).
   // Only fall back to debug_token if the WABA ID was not provided.
   let wabaId: string | undefined = providedWabaId;
+  const discoveryLog: string[] = [];
   console.log(`[WhatsApp] exchangeEmbeddedSignupCode called — providedWabaId=${providedWabaId ?? 'NOT PROVIDED'}, providedPhoneNumberId=${providedPhoneNumberId ?? 'NOT PROVIDED'}, businessPortfolioId=${businessPortfolioId ?? 'NOT PROVIDED'}`);
 
   if (!wabaId && businessPortfolioId) {
@@ -422,17 +423,22 @@ export async function exchangeEmbeddedSignupCode(
         const ownedData = (await ownedRes.json()) as { data?: Array<{ id: string }> };
         console.log('[WhatsApp] owned_whatsapp_business_accounts:', JSON.stringify(ownedData?.data?.slice(0, 3)));
         wabaId = ownedData?.data?.[0]?.id;
+        if (!wabaId) discoveryLog.push(`owned_whatsapp_business_accounts returned empty data`);
       } else {
         const errBody = await ownedRes.text().catch(() => '');
-        console.warn(`[WhatsApp] owned_whatsapp_business_accounts failed (${ownedRes.status}): ${errBody}`);
+        const msg = `owned_whatsapp_business_accounts HTTP ${ownedRes.status}: ${errBody.slice(0, 200)}`;
+        console.warn(`[WhatsApp] ${msg}`);
+        discoveryLog.push(msg);
       }
     } catch (ownedErr) {
-      console.warn('[WhatsApp] owned_whatsapp_business_accounts call failed:', ownedErr);
+      const msg = `owned_whatsapp_business_accounts error: ${ownedErr instanceof Error ? ownedErr.message : String(ownedErr)}`;
+      console.warn('[WhatsApp]', msg);
+      discoveryLog.push(msg);
     }
   }
 
   if (!wabaId) {
-    // Try debug_token first (requires whatsapp_business_management)
+    // Try debug_token (requires whatsapp_business_management)
     try {
       const appToken = `${appId}|${appSecret}`;
       const debugRes = await fetch(
@@ -440,57 +446,54 @@ export async function exchangeEmbeddedSignupCode(
         { signal: AbortSignal.timeout(15_000) },
       );
       const debugData = (await debugRes.json()) as {
-        data?: {
-          granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
-          scopes?: string[];
-        };
+        data?: { granular_scopes?: Array<{ scope: string; target_ids?: string[] }> };
+        error?: { message?: string };
       };
 
-      const wabaScope = debugData?.data?.granular_scopes?.find(
-        (s) => s.scope === 'whatsapp_business_management',
-      );
-      wabaId = wabaScope?.target_ids?.[0];
-
-      // Log what scopes we got for debugging
-      console.log('[WhatsApp] debug_token scopes:', JSON.stringify(debugData?.data?.granular_scopes?.map(s => ({ scope: s.scope, ids: s.target_ids }))));
+      if (debugData.error) {
+        discoveryLog.push(`debug_token error: ${debugData.error.message}`);
+      } else {
+        const wabaScope = debugData?.data?.granular_scopes?.find(s => s.scope === 'whatsapp_business_management');
+        wabaId = wabaScope?.target_ids?.[0];
+        const scopeList = debugData?.data?.granular_scopes?.map(s => s.scope).join(', ') ?? 'none';
+        console.log(`[WhatsApp] debug_token scopes: ${scopeList}`);
+        if (!wabaId) discoveryLog.push(`debug_token: whatsapp_business_management scope not found (scopes: ${scopeList})`);
+      }
     } catch (debugErr) {
-      console.warn('[WhatsApp] debug_token call failed:', debugErr);
+      discoveryLog.push(`debug_token failed: ${debugErr instanceof Error ? debugErr.message : String(debugErr)}`);
     }
   }
 
   if (!wabaId) {
-    // Fallback: try to get WABA via /me/businesses endpoint (requires business_management scope)
+    // Last resort: /me/businesses
     try {
       const bizRes = await fetch(
         `https://graph.facebook.com/${graphVersion}/me/businesses?fields=id,name,whatsapp_business_accounts{id,name}`,
-        {
-          headers: { Authorization: `Bearer ${access_token}` },
-          signal: AbortSignal.timeout(15_000),
-        },
+        { headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(15_000) },
       );
       if (bizRes.ok) {
         const bizData = (await bizRes.json()) as {
-          data?: Array<{
-            id: string;
-            whatsapp_business_accounts?: { data?: Array<{ id: string }> };
-          }>;
+          data?: Array<{ id: string; whatsapp_business_accounts?: { data?: Array<{ id: string }> } }>;
+          error?: { message?: string };
         };
-        console.log('[WhatsApp] /me/businesses response:', JSON.stringify(bizData?.data?.slice(0, 2)));
-        wabaId = bizData?.data?.[0]?.whatsapp_business_accounts?.data?.[0]?.id;
+        if (bizData.error) {
+          discoveryLog.push(`/me/businesses error: ${bizData.error.message}`);
+        } else {
+          wabaId = bizData?.data?.[0]?.whatsapp_business_accounts?.data?.[0]?.id;
+          if (!wabaId) discoveryLog.push(`/me/businesses: no WABA found in response`);
+        }
+      } else {
+        const errBody = await bizRes.text().catch(() => '');
+        discoveryLog.push(`/me/businesses HTTP ${bizRes.status}: ${errBody.slice(0, 200)}`);
       }
     } catch (bizErr) {
-      console.warn('[WhatsApp] /me/businesses call failed:', bizErr);
+      discoveryLog.push(`/me/businesses failed: ${bizErr instanceof Error ? bizErr.message : String(bizErr)}`);
     }
   }
 
   if (!wabaId) {
-    throw new Error(
-      'No WhatsApp Business Account found. ' +
-      'This usually means the domain is not whitelisted in Meta App Dashboard, ' +
-      'or the whatsapp_business_management permission is still under review. ' +
-      'Please add https://augustus.silverconne.com to Allowed Domains in Meta App Dashboard → ' +
-      'Facebook Login for Business → Settings → Allowed domains, then try again.'
-    );
+    const details = discoveryLog.length > 0 ? ` Details: ${discoveryLog.join(' | ')}` : '';
+    throw new Error(`Could not find your WhatsApp Business Account.${details}`);
   }
 
   // Step 3: Get phone number details from WABA.
