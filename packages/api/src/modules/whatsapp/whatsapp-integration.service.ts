@@ -555,10 +555,7 @@ export async function exchangeEmbeddedSignupCode(
   }
 
   if (!wabaId) {
-    throw new Error(
-      'WhatsApp Business Account connection is temporarily unavailable while our app permissions are being reviewed by Meta. ' +
-      'Please use the manual setup option below to enter your credentials directly, or try again once the review is complete.'
-    );
+    throw new Error('Connection failed. Please try again or contact support if the issue persists.');
   }
 
   // Step 3: Get phone number details from WABA.
