@@ -405,6 +405,7 @@ export async function exchangeEmbeddedSignupCode(
   // This avoids needing the whatsapp_business_management permission (which may be under review).
   // Only fall back to debug_token if the WABA ID was not provided.
   let wabaId: string | undefined = providedWabaId;
+  console.log(`[WhatsApp] exchangeEmbeddedSignupCode called — providedWabaId=${providedWabaId ?? 'NOT PROVIDED'}, providedPhoneNumberId=${providedPhoneNumberId ?? 'NOT PROVIDED'}`);
 
   if (!wabaId) {
     // Try debug_token first (requires whatsapp_business_management)
@@ -459,7 +460,13 @@ export async function exchangeEmbeddedSignupCode(
   }
 
   if (!wabaId) {
-    throw new Error('No WhatsApp Business Account found. Please ensure you completed the Meta setup and granted the required permissions.');
+    throw new Error(
+      'No WhatsApp Business Account found. ' +
+      'This usually means the domain is not whitelisted in Meta App Dashboard, ' +
+      'or the whatsapp_business_management permission is still under review. ' +
+      'Please add https://augustus.silverconne.com to Allowed Domains in Meta App Dashboard → ' +
+      'Facebook Login for Business → Settings → Allowed domains, then try again.'
+    );
   }
 
   // Step 3: Get phone number details from WABA.
