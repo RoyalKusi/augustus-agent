@@ -409,6 +409,33 @@ export async function exchangeEmbeddedSignupCode(
   const discoveryLog: string[] = [];
   console.log(`[WhatsApp] exchangeEmbeddedSignupCode called — providedWabaId=${providedWabaId ?? 'NOT PROVIDED'}, providedPhoneNumberId=${providedPhoneNumberId ?? 'NOT PROVIDED'}, businessPortfolioId=${businessPortfolioId ?? 'NOT PROVIDED'}`);
 
+  // Primary: use phone_number_id to get WABA — only needs whatsapp_business_messaging scope (already approved)
+  if (!wabaId && providedPhoneNumberId) {
+    try {
+      const wabaFromPhoneRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/${providedPhoneNumberId}/whatsapp_business_account`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (wabaFromPhoneRes.ok) {
+        const wabaFromPhoneData = (await wabaFromPhoneRes.json()) as { id?: string; error?: { message?: string } };
+        if (wabaFromPhoneData.id) {
+          wabaId = wabaFromPhoneData.id;
+          console.log(`[WhatsApp] WABA discovered via phone_number_id: ${wabaId}`);
+        } else if (wabaFromPhoneData.error) {
+          discoveryLog.push(`phone→WABA error: ${wabaFromPhoneData.error.message}`);
+        }
+      } else {
+        const errBody = await wabaFromPhoneRes.text().catch(() => '');
+        discoveryLog.push(`phone→WABA HTTP ${wabaFromPhoneRes.status}: ${errBody.slice(0, 200)}`);
+      }
+    } catch (phoneWabaErr) {
+      discoveryLog.push(`phone→WABA failed: ${phoneWabaErr instanceof Error ? phoneWabaErr.message : String(phoneWabaErr)}`);
+    }
+  }
+
   if (!wabaId && businessPortfolioId) {
     // Use business_id from postMessage to look up owned WABAs — only needs business_management scope
     try {
@@ -421,19 +448,14 @@ export async function exchangeEmbeddedSignupCode(
       );
       if (ownedRes.ok) {
         const ownedData = (await ownedRes.json()) as { data?: Array<{ id: string }> };
-        console.log('[WhatsApp] owned_whatsapp_business_accounts:', JSON.stringify(ownedData?.data?.slice(0, 3)));
         wabaId = ownedData?.data?.[0]?.id;
         if (!wabaId) discoveryLog.push(`owned_whatsapp_business_accounts returned empty data`);
       } else {
         const errBody = await ownedRes.text().catch(() => '');
-        const msg = `owned_whatsapp_business_accounts HTTP ${ownedRes.status}: ${errBody.slice(0, 200)}`;
-        console.warn(`[WhatsApp] ${msg}`);
-        discoveryLog.push(msg);
+        discoveryLog.push(`owned_whatsapp_business_accounts HTTP ${ownedRes.status}: ${errBody.slice(0, 200)}`);
       }
     } catch (ownedErr) {
-      const msg = `owned_whatsapp_business_accounts error: ${ownedErr instanceof Error ? ownedErr.message : String(ownedErr)}`;
-      console.warn('[WhatsApp]', msg);
-      discoveryLog.push(msg);
+      discoveryLog.push(`owned_whatsapp_business_accounts error: ${ownedErr instanceof Error ? ownedErr.message : String(ownedErr)}`);
     }
   }
 
@@ -456,7 +478,6 @@ export async function exchangeEmbeddedSignupCode(
         const wabaScope = debugData?.data?.granular_scopes?.find(s => s.scope === 'whatsapp_business_management');
         wabaId = wabaScope?.target_ids?.[0];
         const scopeList = debugData?.data?.granular_scopes?.map(s => s.scope).join(', ') ?? 'none';
-        console.log(`[WhatsApp] debug_token scopes: ${scopeList}`);
         if (!wabaId) discoveryLog.push(`debug_token: whatsapp_business_management scope not found (scopes: ${scopeList})`);
       }
     } catch (debugErr) {
