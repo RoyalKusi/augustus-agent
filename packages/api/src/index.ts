@@ -48,6 +48,9 @@ if (isProdEnv) {
   if (!process.env.EMAIL_API_KEY) {
     console.error('[Config] CRITICAL: EMAIL_API_KEY is not set. No emails will be sent (password reset, verification, etc.).');
   }
+  if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length !== 64) {
+    console.error('[Config] CRITICAL: ENCRYPTION_KEY is not set or is not a 64-character hex string. WhatsApp access tokens cannot be encrypted — the WhatsApp connection flow will fail. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  }
   if (!process.env.PAYNOW_RESULT_URL || process.env.PAYNOW_RESULT_URL.includes('example.com')) {
     console.warn('[Config] WARNING: PAYNOW_RESULT_URL is not set or uses example.com default. Paynow webhooks will not reach the server — subscriptions will not auto-activate after payment. Set PAYNOW_RESULT_URL=https://augustus.silverconne.com/webhooks/paynow/subscription');
   }

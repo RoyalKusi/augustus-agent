@@ -32,7 +32,8 @@ function friendlyError(status: number, rawMessage: string): string {
   if (status === 404) return 'The requested resource was not found.';
   if (status === 422) return rawMessage; // validation errors are user-facing
   if (status === 429) return 'Too many requests. Please wait a moment and try again.';
-  if (status >= 500) return 'Something went wrong on our end. Please try again shortly.';
+  if (status === 502) return rawMessage || 'External service error. Please try again.';
+  if (status >= 500) return rawMessage || 'Something went wrong on our end. Please try again shortly.';
   return rawMessage || `Request failed (${status})`;
 }
 
