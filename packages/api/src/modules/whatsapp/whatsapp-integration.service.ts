@@ -555,8 +555,10 @@ export async function exchangeEmbeddedSignupCode(
   }
 
   if (!wabaId) {
-    const details = discoveryLog.length > 0 ? ` Details: ${discoveryLog.join(' | ')}` : '';
-    throw new Error(`Could not find your WhatsApp Business Account.${details}`);
+    throw new Error(
+      'WhatsApp Business Account connection is temporarily unavailable while our app permissions are being reviewed by Meta. ' +
+      'Please use the manual setup option below to enter your credentials directly, or try again once the review is complete.'
+    );
   }
 
   // Step 3: Get phone number details from WABA.
