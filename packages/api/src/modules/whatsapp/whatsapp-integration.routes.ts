@@ -169,6 +169,7 @@ export async function whatsappIntegrationRoutes(app: FastifyInstance): Promise<v
       return reply.send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Token exchange failed.';
+      app.log.error({ err, businessId, code: code?.slice(0, 8) + '...' }, '[WhatsApp] exchange-token failed');
       return reply.status(502).send({ error: message });
     }
   });
