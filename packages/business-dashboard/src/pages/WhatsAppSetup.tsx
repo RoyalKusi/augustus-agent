@@ -215,15 +215,16 @@ export default function WhatsAppSetup() {
       setView('main');
 
       const regOk = result.registrationStatus === 'registered' || result.registrationStatus === 'already_registered';
+      const regSkipped = result.registrationStatus === 'skipped';
       const webhookOk = result.webhookStatus === 'active';
 
-      if (regOk && webhookOk) {
-        setMsg(`✅ WhatsApp connected! ${result.displayPhoneNumber ?? ''} ${result.verifiedName ? `(${result.verifiedName})` : ''} — your AI agent is ready.`);
-        // Auto-seed and submit templates after successful connection
+      if ((regOk || regSkipped) && webhookOk) {
+        const skippedNote = regSkipped ? ` ⚠️ Phone registration skipped: ${result.registrationError}` : '';
+        setMsg(`✅ WhatsApp connected! ${result.displayPhoneNumber ?? ''} ${result.verifiedName ? `(${result.verifiedName})` : ''} — your AI agent is ready.${skippedNote}`);
         void seedAndSubmitTemplates();
-      } else if (regOk && !webhookOk) {
+      } else if ((regOk || regSkipped) && !webhookOk) {
         setMsg(`⚠️ Connected but webhook pending. Click "Register Webhook" to activate.`);
-      } else if (!regOk) {
+      } else if (!regOk && !regSkipped) {
         setError(result.registrationError ?? 'Phone number registration failed. If this number is active on WhatsApp, remove it from the WhatsApp app first, wait 3 minutes, then reconnect.');
       }
     }).catch((err: unknown) => {
