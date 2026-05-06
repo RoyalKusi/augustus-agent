@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { apiFetch } from '../api';
+
+interface Plan {
+  tier: string;
+  displayName: string;
+  priceUsd: number;
+  tokenBudgetUsd: number;
+}
 
 const sections = [
   { id: 'getting-started', label: 'Getting Started', icon: '🚀' },
@@ -20,6 +28,29 @@ const LIGHT = '#ebf8ff';
 export default function Docs() {
   const isMobile = useIsMobile();
   const [active, setActive] = useState('getting-started');
+  const [plans, setPlans] = useState<Plan[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ plans: Plan[] }>('/subscription/plans')
+      .then(r => setPlans(r.plans ?? []))
+      .catch(() => {});
+  }, []);
+
+  // Build plan table rows from DB data, fall back to hardcoded defaults
+  const planRows: string[][] = [['Plan', 'Price / month', 'AI Tokens / month']];
+  if (plans.length > 0) {
+    plans.forEach(p => planRows.push([
+      p.displayName,
+      `$${p.priceUsd.toFixed(2)}`,
+      `${(p.tokenBudgetUsd * 1000).toLocaleString()}`,
+    ]));
+  } else {
+    planRows.push(
+      ['Silver', '$31.99', '12,000'],
+      ['Gold', '$61.99', '30,000'],
+      ['Platinum', '$129.99', '70,000'],
+    );
+  }
 
   // Track active section on scroll
   useEffect(() => {
@@ -154,12 +185,7 @@ export default function Docs() {
           {/* Subscription */}
           <Section id="subscription" title="Subscription" icon="💳" mobile={isMobile}>
             <p style={bodyText}>Your plan controls monthly AI usage and available features.</p>
-            <Table rows={[
-              ['Plan', 'Price', 'AI Credits'],
-              ['Silver', '$31.99', '12,000'],
-              ['Gold', '$61.99', '30,000'],
-              ['Platinum', '$129.99', '70,000'],
-            ]} />
+            <Table rows={planRows} />
             <ul style={listStyle}>
               <li>Credits reset each billing cycle.</li>
               <li>Sidebar progress bar shows current usage.</li>
