@@ -175,22 +175,18 @@ export default function WhatsAppSetup() {
 
         // Meta sends this when embedded signup is complete
         if (data?.type === 'WA_EMBEDDED_SIGNUP') {
-          if (data.event === 'FINISH' || data.event === 'SUBMIT') {
+          // Handle all FINISH variants — Meta uses different event names depending on flow type:
+          // FINISH, FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING, FINISH_ONLY_WABA, etc.
+          const isFinish = typeof data.event === 'string' && data.event.startsWith('FINISH');
+          if (isFinish) {
             const code = data.data?.code;
-            // Log the full data structure so we can see exactly what Meta sends
-            console.log('[WhatsApp] WA_EMBEDDED_SIGNUP data:', JSON.stringify(data.data));
             if (code) {
               setLoading(true);
               setError('');
               setMsg('Completing WhatsApp connection…');
-              // Try multiple possible field names Meta uses for WABA ID and Phone Number ID
-              const wabaId = data.data?.waba_id
-                ?? data.data?.wabaId
-                ?? data.data?.business_id
-                ?? data.data?.current_waba_id;
-              const phoneNumberId = data.data?.phone_number_id
-                ?? data.data?.phoneNumberId
-                ?? data.data?.current_phone_number_id;
+              // waba_id and phone_number_id are always present on successful completion
+              const wabaId = data.data?.waba_id ?? data.data?.wabaId;
+              const phoneNumberId = data.data?.phone_number_id ?? data.data?.phoneNumberId;
               exchangeCode(code, wabaId, phoneNumberId);
             }
           } else if (data.event === 'CANCEL') {
@@ -253,11 +249,15 @@ export default function WhatsAppSetup() {
     window.FB.login((response) => {
       const code = response.authResponse?.code;
       if (code) {
-        setLoading(true);
-        setMsg('Completing WhatsApp connection…');
-        // FB.login response may also include waba_id/phone_number_id in some SDK versions
-        const extra = response.authResponse as unknown as { waba_id?: string; phone_number_id?: string };
-        exchangeCode(code, extra?.waba_id, extra?.phone_number_id);
+        // The postMessage handler above should have already called exchangeCode with the WABA IDs.
+        // The FB.login callback fires after the postMessage, so only use it as a fallback
+        // if the postMessage didn't fire (e.g. popup was blocked or domain not whitelisted).
+        // We detect this by checking if loading is already true (postMessage already handled it).
+        if (!loading) {
+          setLoading(true);
+          setMsg('Completing WhatsApp connection…');
+          exchangeCode(code);
+        }
       } else if (response.status === 'connected') {
         // Already connected — refresh integration status
         apiFetch<Integration>('/whatsapp/integration').then(setIntegration).catch(() => {});
