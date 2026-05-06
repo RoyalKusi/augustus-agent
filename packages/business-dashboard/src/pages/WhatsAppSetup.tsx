@@ -425,10 +425,11 @@ export default function WhatsAppSetup() {
               <button onClick={handleEmbeddedSignup} disabled={loading} style={{ ...primaryBtn, fontSize: 15, padding: '12px 24px' }}>
                 {loading ? 'Connecting…' : '🔗  Connect WhatsApp Business'}
               </button>
-              <p style={{ marginTop: 16, fontSize: 13, color: '#a0aec0' }}>
-                Already have credentials?{' '}
-                <button onClick={() => setView('manual')} style={linkBtn}>Enter them manually</button>
-              </p>
+              <div style={{ marginTop: 16, padding: '12px 14px', background: '#fffbeb', border: '1px solid #f6e05e', borderRadius: 8, fontSize: 13, color: '#744210' }}>
+                <strong>Having trouble?</strong> If the guided setup fails, you can{' '}
+                <button onClick={() => setView('manual')} style={linkBtn}>enter your credentials manually</button>
+                {' '}using your WABA ID and Phone Number ID from Meta Business Manager.
+              </div>
             </>
           ) : (
             <>
