@@ -146,16 +146,14 @@ export async function whatsappIntegrationRoutes(app: FastifyInstance): Promise<v
   // POST /integration/exchange-token — Embedded Signup: exchange short-lived code
   app.post('/integration/exchange-token', async (request, reply) => {
     const businessId = (request as unknown as { businessId: string }).businessId;
-    const { code } = request.body as { code?: string };
+    const { code, wabaId: providedWabaId, phoneNumberId: providedPhoneNumberId } = request.body as { code?: string; wabaId?: string; phoneNumberId?: string };
 
     if (!code) {
       return reply.status(400).send({ error: 'code is required.' });
     }
 
     try {
-      const result = await exchangeEmbeddedSignupCode(businessId, code);
-
-      // Auto-seed platform templates after successful connection (best-effort, non-blocking)
+      const result = await exchangeEmbeddedSignupCode(businessId, code, providedWabaId, providedPhoneNumberId);
       void (async () => {
         try {
           const { templateService } = await import('./template.service.js');

@@ -378,6 +378,8 @@ export interface ExchangeTokenResult {
 export async function exchangeEmbeddedSignupCode(
   businessId: string,
   code: string,
+  providedWabaId?: string,
+  providedPhoneNumberId?: string,
 ): Promise<ExchangeTokenResult> {
   const graphVersion = config.meta.graphApiVersion;
   const appId = config.meta.appId;
@@ -399,28 +401,36 @@ export async function exchangeEmbeddedSignupCode(
   }
   const { access_token } = (await tokenRes.json()) as { access_token: string };
 
-  // Step 2: Inspect token to get WABA ID from granular_scopes
-  const appToken = `${appId}|${appSecret}`;
-  const debugRes = await fetch(
-    `https://graph.facebook.com/${graphVersion}/debug_token?input_token=${access_token}&access_token=${encodeURIComponent(appToken)}`,
-    { signal: AbortSignal.timeout(15_000) },
-  );
-  const debugData = (await debugRes.json()) as {
-    data?: {
-      granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
-    };
-  };
-
-  const wabaScope = debugData?.data?.granular_scopes?.find(
-    (s) => s.scope === 'whatsapp_business_management',
-  );
-  const wabaId = wabaScope?.target_ids?.[0];
+  // Step 2: Get WABA ID — use the one provided by the frontend (from postMessage data) if available.
+  // This avoids needing the whatsapp_business_management permission (which may be under review).
+  // Only fall back to debug_token if the WABA ID was not provided.
+  let wabaId: string | undefined = providedWabaId;
 
   if (!wabaId) {
-    throw new Error('No WhatsApp Business Account found in the granted permissions.');
+    const appToken = `${appId}|${appSecret}`;
+    const debugRes = await fetch(
+      `https://graph.facebook.com/${graphVersion}/debug_token?input_token=${access_token}&access_token=${encodeURIComponent(appToken)}`,
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    const debugData = (await debugRes.json()) as {
+      data?: {
+        granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
+      };
+    };
+
+    const wabaScope = debugData?.data?.granular_scopes?.find(
+      (s) => s.scope === 'whatsapp_business_management',
+    );
+    wabaId = wabaScope?.target_ids?.[0];
+  }
+
+  if (!wabaId) {
+    throw new Error('No WhatsApp Business Account found. Please ensure you completed the Meta setup and granted the required permissions.');
   }
 
   // Step 3: Get phone number from WABA with verification status
+  // If the phone number ID was provided directly by the frontend, we can still fetch
+  // the display name and verification status, but use the provided ID as the primary source.
   const phoneRes = await fetch(
     `https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,name_status`,
     {
@@ -437,7 +447,13 @@ export async function exchangeEmbeddedSignupCode(
       name_status?: string;
     }>;
   };
-  const phone = phoneData?.data?.[0];
+
+  // If a specific phone number ID was provided, prefer that one; otherwise use the first
+  let phone = phoneData?.data?.[0];
+  if (providedPhoneNumberId && phoneData?.data) {
+    const match = phoneData.data.find(p => p.id === providedPhoneNumberId);
+    if (match) phone = match;
+  }
 
   if (!phone) {
     throw new Error('No phone number found on this WhatsApp Business Account.');

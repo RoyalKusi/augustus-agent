@@ -181,7 +181,9 @@ export default function WhatsAppSetup() {
               setLoading(true);
               setError('');
               setMsg('Completing WhatsApp connection…');
-              exchangeCode(code);
+              // Meta also sends waba_id and phone_number_id directly in the event data
+              // Pass them to the backend so it doesn't need whatsapp_business_management permission
+              exchangeCode(code, data.data?.waba_id, data.data?.phone_number_id);
             }
           } else if (data.event === 'CANCEL') {
             setError('WhatsApp setup was cancelled. Please try again.');
@@ -198,7 +200,7 @@ export default function WhatsAppSetup() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const exchangeCode = (code: string) => {
+  const exchangeCode = (code: string, wabaId?: string, phoneNumberId?: string) => {
     apiFetch<Integration & {
       webhookStatus: string;
       registrationStatus: string;
@@ -207,7 +209,7 @@ export default function WhatsAppSetup() {
       codeVerificationStatus: string;
       nameStatus: string;
     }>('/whatsapp/integration/exchange-token', {
-      method: 'POST', body: JSON.stringify({ code }),
+      method: 'POST', body: JSON.stringify({ code, wabaId, phoneNumberId }),
     }).then((result) => {
       setIntegration({ ...result, status: result.webhookStatus === 'active' ? 'active' : result.status });
       setView('main');
@@ -244,7 +246,9 @@ export default function WhatsAppSetup() {
       if (code) {
         setLoading(true);
         setMsg('Completing WhatsApp connection…');
-        exchangeCode(code);
+        // FB.login response may also include waba_id/phone_number_id in some SDK versions
+        const extra = response.authResponse as unknown as { waba_id?: string; phone_number_id?: string };
+        exchangeCode(code, extra?.waba_id, extra?.phone_number_id);
       } else if (response.status === 'connected') {
         // Already connected — refresh integration status
         apiFetch<Integration>('/whatsapp/integration').then(setIntegration).catch(() => {});
