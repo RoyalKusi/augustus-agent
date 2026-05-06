@@ -436,6 +436,48 @@ export async function exchangeEmbeddedSignupCode(
     }
   }
 
+  // If no phone_number_id provided, try GET /me/phone_numbers — needs whatsapp_business_messaging only
+  if (!wabaId && !providedPhoneNumberId) {
+    try {
+      const myPhonesRes = await fetch(
+        `https://graph.facebook.com/${graphVersion}/me/phone_numbers?fields=id,display_phone_number,verified_name,whatsapp_business_account`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (myPhonesRes.ok) {
+        const myPhonesData = (await myPhonesRes.json()) as {
+          data?: Array<{
+            id: string;
+            display_phone_number?: string;
+            verified_name?: string;
+            whatsapp_business_account?: { id: string };
+          }>;
+          error?: { message?: string };
+        };
+        if (myPhonesData.error) {
+          discoveryLog.push(`/me/phone_numbers error: ${myPhonesData.error.message}`);
+        } else if (myPhonesData.data && myPhonesData.data.length > 0) {
+          const firstPhone = myPhonesData.data[0];
+          wabaId = firstPhone.whatsapp_business_account?.id;
+          if (wabaId) {
+            console.log(`[WhatsApp] WABA discovered via /me/phone_numbers: ${wabaId}, phoneId: ${firstPhone.id}`);
+          } else {
+            discoveryLog.push(`/me/phone_numbers: phone found but no WABA linked`);
+          }
+        } else {
+          discoveryLog.push(`/me/phone_numbers: no phone numbers found`);
+        }
+      } else {
+        const errBody = await myPhonesRes.text().catch(() => '');
+        discoveryLog.push(`/me/phone_numbers HTTP ${myPhonesRes.status}: ${errBody.slice(0, 200)}`);
+      }
+    } catch (myPhonesErr) {
+      discoveryLog.push(`/me/phone_numbers failed: ${myPhonesErr instanceof Error ? myPhonesErr.message : String(myPhonesErr)}`);
+    }
+  }
+
   if (!wabaId && businessPortfolioId) {
     // Use business_id from postMessage to look up owned WABAs — only needs business_management scope
     try {
