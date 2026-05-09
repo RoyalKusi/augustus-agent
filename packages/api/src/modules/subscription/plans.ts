@@ -9,7 +9,7 @@ export interface Plan {
   tier: PlanTier;
   /** Monthly subscription price in USD */
   priceUsd: number;
-  /** Monthly Claude Haiku cost cap in USD */
+  /** Monthly Claude Sonnet cost cap in USD (includes 10% platform margin) */
   tokenBudgetUsd: number;
   displayName: string;
 }
@@ -18,19 +18,19 @@ export const PLANS: Record<PlanTier, Plan> = {
   silver: {
     tier: 'silver',
     priceUsd: 31.99,
-    tokenBudgetUsd: 12.00,
+    tokenBudgetUsd: 15.00,   // ~1,800 msgs/mo at Sonnet+10% rates
     displayName: 'Silver',
   },
   gold: {
     tier: 'gold',
     priceUsd: 61.99,
-    tokenBudgetUsd: 30.00,
+    tokenBudgetUsd: 40.00,   // ~4,800 msgs/mo at Sonnet+10% rates
     displayName: 'Gold',
   },
   platinum: {
     tier: 'platinum',
     priceUsd: 129.99,
-    tokenBudgetUsd: 70.00,
+    tokenBudgetUsd: 100.00,  // ~12,000 msgs/mo at Sonnet+10% rates
     displayName: 'Platinum',
   },
 };
