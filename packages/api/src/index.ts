@@ -30,6 +30,7 @@ import {
 import { expireStaleOrders } from './modules/payment/payment.service.js';
 import { runBillingCycleResetJob } from './modules/token-budget/token-budget.service.js';
 import { sendRenewalReminders, applyPendingDowngrades, retryFailedPayments } from './modules/subscription/subscription.service.js';
+import { runSubscriptionExpiryJob } from './modules/subscription/subscription-expiry.job.js';
 import { cleanupOldNotifications } from './modules/notification/in-app-notification.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -381,6 +382,7 @@ const start = async () => {
       sendRenewalReminders().catch((err) => alertJobFailure('sendRenewalReminders', err));
       applyPendingDowngrades().catch((err) => alertJobFailure('applyPendingDowngrades', err));
       retryFailedPayments().catch((err) => alertJobFailure('retryFailedPayments', err));
+      runSubscriptionExpiryJob().catch((err) => alertJobFailure('runSubscriptionExpiryJob', err));
     };
     runDailyJobs();
     const dailyInterval = setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
