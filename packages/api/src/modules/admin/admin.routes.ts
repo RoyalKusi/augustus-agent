@@ -12,6 +12,7 @@ import {
   listBusinesses,
   suspendBusiness,
   reactivateBusiness,
+  deactivateBusinessSubscription,
   getAiMetrics,
   getMetaMetrics,
   getPlatformCostMetrics,
@@ -192,6 +193,23 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ message: `${tier} subscription activated.`, subscription: sub });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Activation failed.';
+      const status = message.includes('not found') ? 404 : 400;
+      return reply.status(status).send({ error: message });
+    }
+  });
+
+  // POST /admin/businesses/:id/deactivate — cancel all active subscriptions and suspend the business
+  app.post('/admin/businesses/:id/deactivate', { preHandler: authenticateOperator }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { reason } = request.body as { reason?: string };
+    try {
+      const result = await deactivateBusinessSubscription(id, request.operatorId, reason);
+      return reply.send({
+        message: `Business deactivated. ${result.cancelledCount} subscription(s) cancelled.`,
+        cancelledCount: result.cancelledCount,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Deactivation failed.';
       const status = message.includes('not found') ? 404 : 400;
       return reply.status(status).send({ error: message });
     }

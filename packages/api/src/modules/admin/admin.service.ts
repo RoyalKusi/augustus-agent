@@ -365,6 +365,66 @@ export async function reactivateBusiness(
   await logAuditEvent(operatorId, 'reactivate_business', 'business', businessId);
 }
 
+// ─── Manual subscription deactivation ────────────────────────────────────────
+
+/**
+ * Fully deactivate a business: cancel all active subscriptions and suspend the account.
+ * This is the "nuclear" admin action — it atomically cancels every active subscription
+ * and sets businesses.status = 'suspended' in a single transaction.
+ * An audit log entry is written with the reason.
+ */
+export async function deactivateBusinessSubscription(
+  businessId: string,
+  operatorId: string,
+  reason = 'Manual deactivation by operator',
+): Promise<{ cancelledCount: number }> {
+  const bizResult = await pool.query<{ status: string; email: string; name: string }>(
+    `SELECT status, email, name FROM businesses WHERE id = $1`,
+    [businessId],
+  );
+  if (!bizResult.rows[0]) throw new Error('Business not found.');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Cancel all active subscriptions for this business
+    const cancelResult = await client.query<{ id: string; plan: string }>(
+      `UPDATE subscriptions
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE business_id = $1 AND status = 'active'
+       RETURNING id, plan`,
+      [businessId],
+    );
+
+    // Suspend the business account
+    await client.query(
+      `UPDATE businesses SET status = 'suspended', updated_at = NOW() WHERE id = $1`,
+      [businessId],
+    );
+
+    await client.query('COMMIT');
+
+    const cancelledCount = cancelResult.rows.length;
+    const cancelledPlans = cancelResult.rows.map((r) => r.plan).join(', ');
+
+    await logAuditEvent(operatorId, 'manual_deactivation', 'business', businessId, {
+      reason,
+      cancelledSubscriptions: cancelledCount,
+      cancelledPlans,
+      businessEmail: bizResult.rows[0].email,
+      businessName: bizResult.rows[0].name,
+    });
+
+    return { cancelledCount };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ─── Task 13.5: Audit log ─────────────────────────────────────────────────────
 
 export async function logAuditEvent(
