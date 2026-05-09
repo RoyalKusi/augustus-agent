@@ -15,10 +15,20 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import crypto from 'crypto';
 import Fastify from 'fastify';
 
+// ── Set env vars before any module is loaded (vi.hoisted runs before imports) ─
+vi.hoisted(() => {
+  process.env.META_APP_SECRET = 'test-app-secret';
+  process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+  process.env.CLAUDE_API_KEY = process.env.CLAUDE_API_KEY ?? 'test-claude-key';
+  process.env.CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-test';
+});
+
 // ── Environment setup ─────────────────────────────────────────────────────────
 beforeAll(() => {
   process.env.META_APP_SECRET = 'test-app-secret';
   process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+  process.env.CLAUDE_API_KEY = process.env.CLAUDE_API_KEY ?? 'test-claude-key';
+  process.env.CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-test';
 });
 
 // ── Mock dependencies ─────────────────────────────────────────────────────────
@@ -45,6 +55,10 @@ vi.mock('../../../config.js', () => ({
       appSecret: 'test-app-secret',
       verifyToken: '',
       graphApiVersion: 'v19.0',
+    },
+    claude: {
+      apiKey: 'test-claude-key',
+      model: 'claude-sonnet-4-5-20251001',
     },
   },
 }));

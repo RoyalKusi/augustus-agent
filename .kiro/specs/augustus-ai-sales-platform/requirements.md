@@ -11,7 +11,7 @@ Augustus is a multi-tenant AI sales and marketing platform that enables business
 - **Augustus**: The overall multi-tenant AI sales and marketing platform.
 - **Business**: A paying customer of Augustus who deploys the AI Sales Agent for their own end-customers.
 - **End_Customer**: A person who interacts with a Business's AI Sales Agent via WhatsApp.
-- **AI_Sales_Agent**: The Claude Haiku-powered conversational agent that handles sales interactions on behalf of a Business.
+- **AI_Sales_Agent**: The Claude Sonnet-powered conversational agent that handles sales interactions on behalf of a Business.
 - **Subscription_Manager**: The platform component responsible for plan lifecycle, billing via Paynow, and credit tracking.
 - **WhatsApp_Integration_Service**: The platform component that connects a Business's WhatsApp Business number to Augustus via the Meta Cloud API.
 - **Catalogue_Manager**: The platform component that stores, updates, and serves product and promotional data for a Business.
@@ -73,9 +73,9 @@ Augustus is a multi-tenant AI sales and marketing platform that enables business
 
 #### Acceptance Criteria
 
-1. WHERE a Business is on the Silver tier, THE Token_Budget_Controller SHALL limit monthly Claude Haiku API cost for that Business to $A.
-2. WHERE a Business is on the Gold tier, THE Token_Budget_Controller SHALL limit monthly Claude Haiku API cost for that Business to $B.
-3. WHERE a Business is on the Platinum tier, THE Token_Budget_Controller SHALL limit monthly Claude Haiku API cost for that Business to $C. Cost caps ($A, $B, $C) are configurable by the system admin.
+1. WHERE a Business is on the Silver tier, THE Token_Budget_Controller SHALL limit monthly Claude Sonnet API cost for that Business to $A.
+2. WHERE a Business is on the Gold tier, THE Token_Budget_Controller SHALL limit monthly Claude Sonnet API cost for that Business to $B.
+3. WHERE a Business is on the Platinum tier, THE Token_Budget_Controller SHALL limit monthly Claude Sonnet API cost for that Business to $C. Cost caps ($A, $B, $C) are configurable by the system admin.
 4. WHEN a Business's consumed cost reaches 80% of their tier cost cap, THE Token_Budget_Controller SHALL send an email alert to the Business.
 5. WHEN a Business's consumed cost reaches 95% of their tier cost cap, THE Token_Budget_Controller SHALL send a second email alert to the Business.
 6. WHEN a Business's consumed cost reaches 100% of their tier cost cap, THE Token_Budget_Controller SHALL suspend AI_Sales_Agent responses for that Business until the next billing cycle begins.
@@ -108,7 +108,7 @@ Augustus is a multi-tenant AI sales and marketing platform that enables business
 
 1. WHEN an End_Customer sends a message to a Business's WhatsApp number, THE AI_Sales_Agent SHALL respond within 10 seconds under normal load conditions.
 2. THE AI_Sales_Agent SHALL operate with a goal-driven system prompt that directs every conversation toward product exposure, objection handling, and checkout completion.
-3. THE AI_Sales_Agent SHALL use only Claude Haiku as the inference model for all response generation.
+3. THE AI_Sales_Agent SHALL use only Claude Sonnet as the inference model for all response generation.
 4. WHEN an End_Customer's message contains a product inquiry, THE AI_Sales_Agent SHALL retrieve matching products from the Catalogue_Manager and include them in the response.
 5. WHEN an End_Customer expresses purchase intent, THE AI_Sales_Agent SHALL present a Catalogue_Carousel of relevant products and a Quick_Reply button to initiate checkout.
 6. THE AI_Sales_Agent SHALL maintain conversation context for a session of up to 30 messages or 60 minutes, whichever comes first.
@@ -270,9 +270,9 @@ Augustus is a multi-tenant AI sales and marketing platform that enables business
 
 #### Acceptance Criteria
 
-1. THE Admin_Dashboard SHALL display real-time Claude Haiku API usage metrics including: total tokens consumed, total API calls, cost to date for the current billing cycle, and a per-Business breakdown.
+1. THE Admin_Dashboard SHALL display real-time Claude Sonnet API usage metrics including: total tokens consumed, total API calls, cost to date for the current billing cycle, and a per-Business breakdown.
 2. THE Admin_Dashboard SHALL display real-time Meta_Cloud_API usage metrics including: total messages sent, total messages received, and a per-Business breakdown.
-3. WHEN total platform Claude Haiku cost for the current billing cycle reaches 90% of the aggregate cost cap across all active Business accounts, THE Admin_Dashboard SHALL trigger an alert notification to all operators.
+3. WHEN total platform Claude Sonnet cost for the current billing cycle reaches 90% of the aggregate cost cap across all active Business accounts, THE Admin_Dashboard SHALL trigger an alert notification to all operators.
 4. THE Admin_Dashboard SHALL allow an operator to set a hard token limit override for any individual Business account.
 5. THE Admin_Dashboard SHALL display the current API key status (active, expired, error) for the Meta_Cloud_API and Paynow integrations.
 

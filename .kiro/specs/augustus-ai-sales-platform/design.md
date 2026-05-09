@@ -4,7 +4,7 @@
 
 Augustus is a multi-tenant SaaS platform that deploys a goal-driven AI Sales Agent on each Business's existing WhatsApp Business number. The platform orchestrates three primary flows:
 
-1. **Sales conversations** — End_Customers message a Business's WhatsApp number; the AI_Sales_Agent (Claude Haiku) responds, presents catalogue items, handles objections, and drives checkout via Paynow payment links.
+1. **Sales conversations** — End_Customers message a Business's WhatsApp number; the AI_Sales_Agent (Claude Sonnet) responds, presents catalogue items, handles objections, and drives checkout via Paynow payment links.
 2. **Business self-service** — Businesses register, pick a subscription tier, configure their catalogue and training data, and monitor performance through the Business_Dashboard.
 3. **Platform operations** — Augustus operators monitor all tenants, manage API health, approve withdrawals, and enforce terms via the Admin_Dashboard.
 
@@ -21,7 +21,7 @@ graph TD
     subgraph External
         WA[WhatsApp / Meta Cloud API]
         PN[Paynow Gateway]
-        CH[Claude Haiku API]
+        CH[Claude Sonnet API]
         Email[Email Service]
     end
 
@@ -107,7 +107,7 @@ Core orchestrator consuming events from the Message Queue.
 - Check Manual_Intervention status; if active, skip AI processing.
 - Check Token_Budget_Controller; if budget exhausted, send unavailability message.
 - Build goal-driven system prompt (business training data + catalogue context + sales directives).
-- Call Claude Haiku API with assembled prompt and conversation history.
+- Call Claude Sonnet API with assembled prompt and conversation history.
 - Parse response for structured actions (carousel trigger, payment trigger).
 - Dispatch outbound messages via WhatsApp_Integration_Service.
 - Persist conversation turn to PostgreSQL and update Redis context.
@@ -117,7 +117,7 @@ Session lifecycle: up to 30 messages OR 60 minutes. On expiry, summarise context
 
 ### 3. Token_Budget_Controller
 
-Enforces per-tier monthly Claude Haiku cost caps.
+Enforces per-tier monthly Claude Sonnet cost caps.
 
 | Tier     | Monthly Cost Cap |
 |----------|-----------------|
@@ -479,7 +479,7 @@ performed_at    TIMESTAMPTZ DEFAULT NOW()
 
 ### Property 8: Tier Cost Cap Enforcement
 
-*For any* business on any tier (Silver: $A, Gold: $B, Platinum: $C — all configurable by system admin), once the business's monthly accumulated Claude Haiku cost reaches or exceeds the tier cap, the Token_Budget_Controller must return `allowed = false` for all subsequent inference requests until the billing cycle resets.
+*For any* business on any tier (Silver: $A, Gold: $B, Platinum: $C — all configurable by system admin), once the business's monthly accumulated Claude Sonnet cost reaches or exceeds the tier cap, the Token_Budget_Controller must return `allowed = false` for all subsequent inference requests until the billing cycle resets.
 
 **Validates: Requirements 3.1, 3.2, 3.3**
 
@@ -517,9 +517,9 @@ performed_at    TIMESTAMPTZ DEFAULT NOW()
 
 ---
 
-### Property 13: Claude Haiku Is the Only Inference Model
+### Property 13: Claude Sonnet Is the Only Inference Model
 
-*For any* AI inference call made by the Conversation Engine, the `model` parameter in the Claude API request must be set to the Claude Haiku model identifier and no other model identifier.
+*For any* AI inference call made by the Conversation Engine, the `model` parameter in the Claude API request must be set to the Claude Sonnet model identifier and no other model identifier.
 
 **Validates: Requirements 5.3**
 
@@ -527,7 +527,7 @@ performed_at    TIMESTAMPTZ DEFAULT NOW()
 
 ### Property 14: Session Context Window Boundary
 
-*For any* conversation, the context passed to Claude Haiku must contain at most 30 messages and must not include messages older than 60 minutes from the current message timestamp.
+*For any* conversation, the context passed to Claude Sonnet must contain at most 30 messages and must not include messages older than 60 minutes from the current message timestamp.
 
 **Validates: Requirements 5.6**
 
@@ -789,7 +789,7 @@ performed_at    TIMESTAMPTZ DEFAULT NOW()
 - Malformed payload → log error, return 200 (prevent Meta retry storm), alert ops.
 - Queue enqueue failure → return 500, Meta will retry.
 
-### Claude Haiku API Errors
+### Claude Sonnet API Errors
 - Rate limit (429) → exponential backoff with jitter, max 3 retries; if all fail, send "temporarily unavailable" to End_Customer.
 - Timeout → treat as rate limit, same retry logic.
 - Model error (5xx) → same retry logic; log for ops monitoring.

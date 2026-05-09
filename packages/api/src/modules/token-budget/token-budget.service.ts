@@ -16,7 +16,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface BudgetStatus {
-  /** Whether the Conversation Engine is allowed to call Claude Haiku */
+  /** Whether the Conversation Engine is allowed to call Claude Sonnet */
   allowed: boolean;
   /** Remaining budget in USD (0 when suspended) */
   remainingUsd: number;
@@ -46,7 +46,7 @@ interface TokenUsageRow {
 // ─── Task 4.7: check_budget interface ────────────────────────────────────────
 
 /**
- * Check whether a business is allowed to make a Claude Haiku inference call.
+ * Check whether a business is allowed to make a Claude Sonnet inference call.
  * Property 8: once accumulated cost >= cap, returns allowed=false until cycle resets.
  * Property 10: every subsequent call after 100% cap returns allowed=false.
  */
@@ -74,7 +74,7 @@ export async function checkBudget(businessId: string): Promise<BudgetStatus> {
 // ─── Task 4.2: Atomic cost increment ─────────────────────────────────────────
 
 /**
- * Atomically increment the accumulated cost after a Claude Haiku inference call.
+ * Atomically increment the accumulated cost after a Claude Sonnet inference call.
  * Then evaluate thresholds and enforce suspension if cap is reached.
  * Property 8: cap enforcement after increment.
  * Property 9: exactly one alert per threshold crossing per cycle.

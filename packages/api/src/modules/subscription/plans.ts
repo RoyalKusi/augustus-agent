@@ -9,7 +9,7 @@ export interface Plan {
   tier: PlanTier;
   /** Monthly subscription price in USD */
   priceUsd: number;
-  /** Monthly Claude Haiku cost cap in USD */
+  /** Monthly Claude Sonnet cost cap in USD */
   tokenBudgetUsd: number;
   displayName: string;
 }

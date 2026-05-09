@@ -312,14 +312,16 @@ export default function Businesses() {
                         View
                       </button>
 
-                      {/* Activate subscription */}
-                      <button
-                        onClick={() => setActivateForm({ businessId: b.id, businessName: b.name, tier: 'silver', billingMonths: 1 })}
-                        style={btnSmallGreen}
-                        title="Activate or renew subscription"
-                      >
-                        Activate Sub
-                      </button>
+                      {/* Activate subscription — only show when no active subscription */}
+                      {b.subscriptionStatus !== 'active' && (
+                        <button
+                          onClick={() => setActivateForm({ businessId: b.id, businessName: b.name, tier: 'silver', billingMonths: 1 })}
+                          style={btnSmallGreen}
+                          title="Activate or renew subscription"
+                        >
+                          Activate Sub
+                        </button>
+                      )}
 
                       {/* Deactivate — the key new button */}
                       {(b.status === 'active' || (b.subscriptionStatus === 'active')) && (
