@@ -64,9 +64,26 @@ export default function BusinessDashboard() {
           {data.subscription && (
             <Section title="Subscription">
               <Row label="Tier" value={data.subscription.tier} />
-              <Row label="Status" value={data.subscription.status} />
-              <Row label="Price" value={`${data.subscription.priceUsd.toFixed(2)}/mo`} />
+              <Row
+                label="Status"
+                value={data.subscription.status}
+                highlight={
+                  data.subscription.status === 'active' ? 'green' :
+                  data.subscription.status === 'cancelled' ? 'red' : 'orange'
+                }
+              />
+              <Row label="Price" value={`$${data.subscription.priceUsd.toFixed(2)}/mo`} />
               <Row label="Current Period End" value={data.subscription.currentPeriodEnd ? new Date(data.subscription.currentPeriodEnd).toLocaleDateString() : '—'} />
+              {data.subscription.status !== 'active' && (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: 4, fontSize: 13, color: '#c53030' }}>
+                  ⚠️ This subscription is <strong>{data.subscription.status}</strong>. The business cannot use the AI Sales Agent.
+                </div>
+              )}
+            </Section>
+          )}
+          {!data.subscription && (
+            <Section title="Subscription">
+              <p style={{ margin: 0, fontSize: 14, color: '#718096' }}>No subscription found for this business.</p>
             </Section>
           )}
 
@@ -123,11 +140,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, highlight }: { label: string; value: string; highlight?: 'green' | 'red' | 'orange' }) {
+  const valueColor = highlight === 'green' ? '#276749' : highlight === 'red' ? '#c53030' : highlight === 'orange' ? '#c05621' : undefined;
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f7fafc', fontSize: 14 }}>
       <span style={{ color: '#718096' }}>{label}</span>
-      <span style={{ fontWeight: 500 }}>{value}</span>
+      <span style={{ fontWeight: 500, color: valueColor }}>{value}</span>
     </div>
   );
 }

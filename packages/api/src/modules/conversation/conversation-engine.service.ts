@@ -522,27 +522,30 @@ export async function processInboundMessage(msg) {
 
   // Dispatch carousel if Claude triggered one
   if (action.type === 'carousel' && action.products?.length > 0) {
+    // Fetch only the products Claude referenced that are still active and in stock
     const productRows = await pool.query(
-      'SELECT id, name, price, currency, image_urls, description FROM products WHERE id = ANY($1) AND business_id = $2 AND is_active = TRUE',
+      `SELECT id, name, price, currency, image_urls, description
+       FROM products
+       WHERE id = ANY($1) AND business_id = $2 AND is_active = TRUE AND stock_quantity > 0`,
       [action.products, businessId]
     );
+
     if (productRows.rows.length === 0) {
-      // Products referenced by Claude are no longer available
+      // None of the referenced products are available
       const unavailableMsg = "I'm sorry, those items appear to be out of stock right now. Let me know if you'd like to see what else we have available.";
       await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: unavailableMsg });
       await pool.query(
         "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
         [conversationId, businessId, unavailableMsg]
       );
-    } else if (productRows.rows.length > 0) {
-      // Sort products: cheapest first when price sensitivity detected, else by name
+    } else {
+      // Sort: cheapest first for price-sensitive intents, otherwise alphabetically
       const isPriceSensitive = intentResult.intent === 'price_question' || intentResult.intent === 'negotiation';
       let sortedProducts = [...productRows.rows].sort((a, b) =>
         isPriceSensitive ? Number(a.price) - Number(b.price) : a.name.localeCompare(b.name)
       );
 
-      // WhatsApp carousel requires at least 2 cards � pad with another in-stock
-      // product if Claude only triggered one, so we always use the carousel format
+      // WhatsApp carousel requires at least 2 cards -- pad with another in-stock product if needed
       if (sortedProducts.length === 1) {
         const existingId = sortedProducts[0].id;
         const padResult = await pool.query(
@@ -554,88 +557,89 @@ export async function processInboundMessage(msg) {
           [businessId, existingId]
         );
         if (padResult.rows.length > 0) {
-          // Pad to 2 cards so the native carousel can be used
           sortedProducts = isPriceSensitive
             ? [...sortedProducts, ...padResult.rows].sort((a, b) => Number(a.price) - Number(b.price))
             : [...sortedProducts, ...padResult.rows];
         }
       }
 
-      if (sortedProducts.length >= 1) {
-        const carouselProducts = sortedProducts.slice(0, 10).map((p) => ({
-          id: p.id,
-          name: p.name,
-          price: Number(p.price),
-          currency: p.currency,
-          imageUrl: p.image_urls?.[0] ?? undefined,
-          description: p.description ? String(p.description).slice(0, 60) : undefined,
-        }));
+      // Build the carousel product list (max 10 cards)
+      const PLACEHOLDER = 'https://placehold.co/400x400/e2e8f0/718096/png?text=No+Image';
+      const carouselProducts = sortedProducts.slice(0, 10).map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: Number(p.price),
+        currency: p.currency,
+        imageUrl: Array.isArray(p.image_urls)
+          ? (p.image_urls.find((u: string) => u && u.startsWith('http')) ?? undefined)
+          : (p.image_urls?.[0] && String(p.image_urls[0]).startsWith('http') ? String(p.image_urls[0]) : undefined),
+        description: p.description ? String(p.description).slice(0, 60) : undefined,
+      }));
 
-        // Attempt 1: send with images (mixed is fine � cards without images show text-only)
-        let carouselResult = await sendMessage(businessId, {
+      let carouselResult = { success: false, errorMessage: 'Not attempted' };
+
+      if (carouselProducts.length >= 2) {
+        // Attempt 1: send with real product images (placeholders fill gaps automatically)
+        carouselResult = await sendMessage(businessId, {
           type: 'carousel',
           to: customerWaNumber,
           products: carouselProducts,
         });
 
-        // Attempt 2: if failed and some products had images, retry with placeholder images
-        // replacing any missing/broken image URLs so all cards are consistent
-        if (!carouselResult.success && carouselProducts.some(p => p.imageUrl)) {
-          console.warn('[ConversationEngine] Carousel failed, retrying with placeholder images:', carouselResult.errorMessage);
-          const PLACEHOLDER = 'https://placehold.co/400x400/e2e8f0/718096/png?text=No+Image';
-          const productsWithPlaceholders = carouselProducts.map(p => ({
-            ...p,
-            imageUrl: p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : PLACEHOLDER,
-          }));
+        // Attempt 2: all-placeholder images (in case a specific URL is broken)
+        if (!carouselResult.success) {
+          console.warn('[ConversationEngine] Carousel attempt 1 failed, retrying with all-placeholder images:', carouselResult.errorMessage);
+          const productsAllPlaceholders = carouselProducts.map(p => ({ ...p, imageUrl: PLACEHOLDER }));
           carouselResult = await sendMessage(businessId, {
             type: 'carousel',
             to: customerWaNumber,
-            products: productsWithPlaceholders,
+            products: productsAllPlaceholders,
           });
         }
 
+        // Attempt 3: no images at all (text-only cards)
         if (!carouselResult.success) {
-          console.error('[ConversationEngine] Carousel send failed after retry:', carouselResult.errorMessage);
-          // Fallback: plain text list
-          const productList = carouselProducts.map((p, i) =>
-            `${i + 1}. *${p.name}* � ${p.currency} ${p.price.toFixed(2)}`
-          ).join('\n');
-          await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: `Here are our products (images are temporarily unavailable, sorry about that!):\n\n${productList}\n\nJust reply with the name of what you'd like to order ??` });
-          // Persist the fallback text
-          await pool.query(
-            "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
-            [conversationId, businessId, `Here are our products (images are temporarily unavailable, sorry about that!):\n\n${productList}\n\nJust reply with the name of what you'd like to order ??`]
-          );
-        } else {
-          // Persist a product listing message so the in-app chatbox shows it
-          const productSummary = carouselProducts.map((p, i) =>
-            `${i + 1}. ${p.name} � ${p.currency} ${p.price.toFixed(2)}`
-          ).join('\n');
-          const carouselText = `?? Products shown:\n${productSummary}`;
-          await pool.query(
-            "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
-            [conversationId, businessId, carouselText]
-          );
-          await pool.query(
-            'UPDATE conversations SET message_count = message_count + 1, updated_at = NOW() WHERE id = $1',
-            [conversationId]
-          );
-          if (carouselProducts.length === 1) {
-            // Single product: send order button separately after the image
-            const p = carouselProducts[0];
-            await sendMessage(businessId, {
-              type: 'quick_reply',
-              to: customerWaNumber,
-              body: `Would you like to order *${p.name}*?`,
-              buttons: [{ id: `order_${p.id}`, title: 'Order Now' }],
-            });
-          }
+          console.warn('[ConversationEngine] Carousel attempt 2 failed, retrying with no images:', carouselResult.errorMessage);
+          carouselResult = await sendMessage(businessId, {
+            type: 'carousel',
+            to: customerWaNumber,
+            products: carouselProducts.map(p => ({ ...p, imageUrl: undefined })),
+            forceNoImages: true,
+          });
         }
+      }
+
+      if (carouselResult.success) {
+        // Persist a summary so the in-app chatbox shows what was sent
+        const productSummary = carouselProducts.map((p, i) =>
+          `${i + 1}. ${p.name} - ${p.currency} ${p.price.toFixed(2)}`
+        ).join('\n');
+        const carouselText = `Products shown:\n${productSummary}`;
+        await pool.query(
+          "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
+          [conversationId, businessId, carouselText]
+        );
+        await pool.query(
+          'UPDATE conversations SET message_count = message_count + 1, updated_at = NOW() WHERE id = $1',
+          [conversationId]
+        );
+      } else {
+        // Last resort: plain text product listing
+        console.error('[ConversationEngine] All carousel attempts failed, falling back to text list:', carouselResult.errorMessage);
+        const productList = carouselProducts.map((p, i) =>
+          `${i + 1}. *${p.name}* - ${p.currency} ${p.price.toFixed(2)}${p.description ? '\n   ' + p.description : ''}`
+        ).join('\n\n');
+        const fallbackMsg = `Here are our products:\n\n${productList}\n\nReply with the name of what you'd like to order`;
+        await sendMessage(businessId, { type: 'text', to: customerWaNumber, body: fallbackMsg });
+        await pool.query(
+          "INSERT INTO messages (conversation_id, business_id, direction, message_type, content, created_at) VALUES ($1, $2, 'outbound', 'text', $3, NOW())",
+          [conversationId, businessId, fallbackMsg]
+        );
       }
     }
   }
 
-  // Dispatch payment link if Claude triggered a purchase
+    // Dispatch payment link if Claude triggered a purchase
   if (action.type === 'payment' && action.orderDetails) {
     // Notify business owner of high-intent lead (best-effort, fire-and-forget)
     const orderDetails0 = action.orderDetails as { items?: Array<{ product_id: string; quantity: number }> };
@@ -844,7 +848,7 @@ export async function processInboundMessage(msg) {
   // Persist and record cost in background � don't block the response
   void Promise.all([
     persistConversationTurn(conversationId, businessId, messageText, cleanOutboundText, messageId, timestamp),
-    getBusinessEmail(businessId).then(email => recordInferenceCost(businessId, costUsd, email)),
+    getBusinessEmail(businessId).then(email => recordInferenceCost(businessId, costUsd, email, claudeResponse.inputTokens, claudeResponse.outputTokens)),
   ]);
   return { dispatched: true, action };
 }

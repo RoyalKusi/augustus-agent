@@ -33,6 +33,9 @@ interface TokenUsageRow {
   business_id: string;
   billing_cycle_start: string;
   accumulated_cost_usd: string;
+  input_tokens: number;
+  output_tokens: number;
+  message_count: number;
   alert_80_sent: boolean;
   alert_95_sent: boolean;
   alert_100_sent: boolean;
@@ -80,25 +83,30 @@ export async function recordInferenceCost(
   businessId: string,
   costUsd: number,
   businessEmail: string,
+  inputTokens = 0,
+  outputTokens = 0,
 ): Promise<BudgetStatus> {
   const cycleStart = await getCurrentCycleStart(businessId);
   // Get cap BEFORE incrementing so we can atomically enforce suspension
   const { capUsd } = await getUsageAndCap(businessId);
 
-  // Upsert usage row and atomically increment cost + enforce suspension in one query
+  // Upsert usage row and atomically increment cost + token counts + enforce suspension in one query
   const result = await pool.query<TokenUsageRow>(
-    `INSERT INTO token_usage (business_id, billing_cycle_start, accumulated_cost_usd)
-     VALUES ($1, $2, $3)
+    `INSERT INTO token_usage (business_id, billing_cycle_start, accumulated_cost_usd, input_tokens, output_tokens, message_count)
+     VALUES ($1, $2, $3, $5, $6, 1)
      ON CONFLICT (business_id, billing_cycle_start)
      DO UPDATE SET
        accumulated_cost_usd = token_usage.accumulated_cost_usd + $3,
+       input_tokens         = token_usage.input_tokens  + $5,
+       output_tokens        = token_usage.output_tokens + $6,
+       message_count        = token_usage.message_count + 1,
        suspended = CASE
          WHEN (token_usage.accumulated_cost_usd + $3) >= $4 THEN TRUE
          ELSE token_usage.suspended
        END,
        updated_at = NOW()
      RETURNING *`,
-    [businessId, cycleStart, costUsd, capUsd],
+    [businessId, cycleStart, costUsd, capUsd, inputTokens, outputTokens],
   );
 
   const usage = result.rows[0];
@@ -293,8 +301,9 @@ export async function resetBillingCycle(businessId: string): Promise<void> {
 
   await pool.query(
     `INSERT INTO token_usage (business_id, billing_cycle_start, accumulated_cost_usd,
-       alert_80_sent, alert_95_sent, suspended)
-     VALUES ($1, $2, 0, FALSE, FALSE, FALSE)
+       alert_80_sent, alert_95_sent, alert_100_sent, suspended,
+       input_tokens, output_tokens, message_count)
+     VALUES ($1, $2, 0, FALSE, FALSE, FALSE, FALSE, 0, 0, 0)
      ON CONFLICT (business_id, billing_cycle_start) DO NOTHING`,
     [businessId, newCycleStart],
   );

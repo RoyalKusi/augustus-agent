@@ -232,6 +232,7 @@ export interface BusinessListItem {
   email: string;
   status: string;
   plan: string | null;
+  subscriptionStatus: string | null;
   createdAt: string;
 }
 
@@ -256,17 +257,22 @@ export async function listBusinesses(filters: {
     params.push(filters.status);
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const planJoin = `LEFT JOIN subscriptions s ON s.business_id = b.id AND s.status = 'active'`;
-  let planCondition = '';
+  // Always join subscriptions so plan column is available; fold plan filter into WHERE
+  // Use most recent subscription regardless of status so cancelled/expired plans still show
+  const planJoin = `LEFT JOIN LATERAL (
+    SELECT plan, status AS sub_status FROM subscriptions
+    WHERE business_id = b.id
+    ORDER BY created_at DESC LIMIT 1
+  ) s ON TRUE`;
   if (filters.plan) {
-    planCondition = `AND s.plan = $${idx++}`;
+    conditions.push(`s.plan = $${idx++}`);
     params.push(filters.plan);
   }
 
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const countResult = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM businesses b ${planJoin} ${where} ${planCondition}`,
+    `SELECT COUNT(*) AS count FROM businesses b ${planJoin} ${where}`,
     params,
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
@@ -276,14 +282,15 @@ export async function listBusinesses(filters: {
   const offset = (page - 1) * limit;
   const totalPages = Math.ceil(total / limit);
 
+  const limitIdx = idx++;
+  const offsetIdx = idx++;
   const query = `
-    SELECT b.id, b.name, b.email, b.status, s.plan AS plan, b.created_at
+    SELECT b.id, b.name, b.email, b.status, s.plan AS plan, s.sub_status AS subscription_status, b.created_at
     FROM businesses b
     ${planJoin}
     ${where}
-    ${planCondition}
     ORDER BY b.created_at DESC
-    LIMIT $${idx++} OFFSET $${idx++}
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
   `;
   params.push(limit, offset);
 
@@ -293,6 +300,7 @@ export async function listBusinesses(filters: {
     email: string;
     status: string;
     plan: string | null;
+    subscription_status: string | null;
     created_at: Date;
   }>(query, params);
 
@@ -302,6 +310,7 @@ export async function listBusinesses(filters: {
     email: row.email,
     status: row.status,
     plan: row.plan,
+    subscriptionStatus: row.subscription_status,
     createdAt: row.created_at.toISOString(),
   }));
 
@@ -382,8 +391,13 @@ export interface AiMetrics {
     businessId: string;
     businessName: string;
     tokens: number;
+    inputTokens: number;
+    outputTokens: number;
     calls: number;
     costUsd: number;
+    avgCostPerMessage: number;
+    avgInputTokensPerMessage: number;
+    avgOutputTokensPerMessage: number;
   }>;
 }
 
@@ -392,25 +406,40 @@ export async function getAiMetrics(): Promise<AiMetrics> {
     business_id: string;
     business_name: string;
     cost_usd: string;
+    input_tokens: string;
+    output_tokens: string;
+    message_count: string;
   }>(
     `SELECT tu.business_id, b.name AS business_name,
-            COALESCE(SUM(tu.accumulated_cost_usd), 0) AS cost_usd
+            COALESCE(SUM(tu.accumulated_cost_usd), 0) AS cost_usd,
+            COALESCE(SUM(tu.input_tokens), 0)  AS input_tokens,
+            COALESCE(SUM(tu.output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(tu.message_count), 0) AS message_count
      FROM token_usage tu
      JOIN businesses b ON b.id = tu.business_id
      GROUP BY tu.business_id, b.name
      ORDER BY cost_usd DESC`,
   );
 
-  const perBusiness = result.rows.map((row) => ({
-    businessId: row.business_id,
-    businessName: row.business_name,
-    tokens: 0,
-    calls: 0,
-    costUsd: Number(row.cost_usd),
-  }));
+  const perBusiness = result.rows.map((row) => {
+    const msgs = Number(row.message_count);
+    const costUsd = Number(row.cost_usd);
+    return {
+      businessId: row.business_id,
+      businessName: row.business_name,
+      tokens: Number(row.input_tokens) + Number(row.output_tokens),
+      inputTokens: Number(row.input_tokens),
+      outputTokens: Number(row.output_tokens),
+      calls: msgs,
+      costUsd,
+      avgCostPerMessage: msgs > 0 ? costUsd / msgs : 0,
+      avgInputTokensPerMessage: msgs > 0 ? Math.round(Number(row.input_tokens) / msgs) : 0,
+      avgOutputTokensPerMessage: msgs > 0 ? Math.round(Number(row.output_tokens) / msgs) : 0,
+    };
+  });
 
-  const totalTokens = 0;
-  const totalCalls = 0;
+  const totalTokens = perBusiness.reduce((s, r) => s + r.tokens, 0);
+  const totalCalls = perBusiness.reduce((s, r) => s + r.calls, 0);
   const totalCostUsd = perBusiness.reduce((s, r) => s + r.costUsd, 0);
 
   return { totalTokens, totalCalls, totalCostUsd, perBusiness };
@@ -743,7 +772,7 @@ export async function getBusinessDashboardView(businessId: string): Promise<Reco
     pool.query<{ plan: string; status: string; price_usd: string; renewal_date: string | null }>(
       `SELECT s.plan, s.status, s.price_usd, s.renewal_date
        FROM subscriptions s
-       WHERE s.business_id = $1 AND s.status = 'active'
+       WHERE s.business_id = $1
        ORDER BY s.created_at DESC LIMIT 1`,
       [businessId],
     ),

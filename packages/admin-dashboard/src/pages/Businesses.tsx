@@ -8,6 +8,7 @@ interface Business {
   email: string;
   status: string;
   plan?: string | null;
+  subscriptionStatus?: string | null;
   createdAt?: string;
   referralEnabled?: boolean;
   referralCode?: string | null;
@@ -318,7 +319,22 @@ export default function Businesses() {
                 </td>
                 <td style={td}>{b.name}</td>
                 <td style={td}>{b.email}</td>
-                <td style={td}>{b.plan ?? '—'}</td>
+                <td style={td}>
+                  {b.plan ? (
+                    <span>
+                      {b.plan}
+                      {b.subscriptionStatus && b.subscriptionStatus !== 'active' && (
+                        <span style={{
+                          marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
+                          background: b.subscriptionStatus === 'cancelled' ? '#fed7d7' : '#feebc8',
+                          color: b.subscriptionStatus === 'cancelled' ? '#c53030' : '#c05621',
+                        }}>
+                          {b.subscriptionStatus}
+                        </span>
+                      )}
+                    </span>
+                  ) : '—'}
+                </td>
                 <td style={td}>{b.status}</td>
                 <td style={td}>{b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '—'}</td>
                 <td style={td}>
