@@ -501,8 +501,13 @@ export async function processInboundMessage(msg) {
   }
 
   const businessEmail = await getBusinessEmail(businessId);
-  // Claude Haiku pricing: $0.25/M input, $1.25/M output
-  const costUsd = (claudeResponse.inputTokens / 1_000_000) * 0.25 + (claudeResponse.outputTokens / 1_000_000) * 1.25;
+  // Claude Sonnet pricing + 10% platform margin:
+  // Base: $3.00/M input, $15.00/M output (Claude Sonnet 4 / 4.5 / 4.6 rates)
+  // With 10% markup: $3.30/M input, $16.50/M output
+  const SONNET_INPUT_RATE  = 3.00 * 1.10; // $3.30 per 1M input tokens
+  const SONNET_OUTPUT_RATE = 15.00 * 1.10; // $16.50 per 1M output tokens
+  const costUsd = (claudeResponse.inputTokens / 1_000_000) * SONNET_INPUT_RATE
+                + (claudeResponse.outputTokens / 1_000_000) * SONNET_OUTPUT_RATE;
 
   const action = parseClaudeResponse(claudeResponse.text);
   // For structured actions, action.text is the conversational part with the trigger stripped.
