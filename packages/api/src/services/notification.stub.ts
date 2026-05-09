@@ -1,4 +1,4 @@
-import { sendEmail } from '../modules/notification/notification.service.js';
+import { sendEmail, emailTemplates } from '../modules/notification/notification.service.js';
 import { config } from '../config.js';
 
 export async function sendVerificationEmail(email: string, token: string): Promise<void> {
@@ -92,6 +92,17 @@ export async function sendSubscriptionActivatedEmail(
   );
 }
 
+export async function sendSubscriptionExpiredEmail(
+  email: string,
+  planName: string,
+  expiryDate: Date,
+): Promise<void> {
+  const expiryDateStr = expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const reactivationUrl = `${config.frontendUrl}/dashboard/subscription`;
+  const template = emailTemplates.subscriptionExpired(planName, expiryDateStr, reactivationUrl);
+  await sendEmail(email, template.subject, template.html, template.text);
+}
+
 export async function sendBudgetAlert80Email(
   email: string,
   usagePct: number,
@@ -116,4 +127,15 @@ export async function sendBudgetAlert95Email(
     `<h2>Urgent Usage Alert — 95%</h2><p>You have consumed <strong>${usagePct.toFixed(1)}%</strong> of your monthly AI budget (cap: $${capUsd.toFixed(2)}).</p><p><strong>Action required:</strong> Upgrade your plan now to avoid AI service suspension.</p>`,
     `URGENT: You have used ${usagePct.toFixed(1)}% of your $${capUsd.toFixed(2)} monthly AI budget. Upgrade now to avoid suspension.`,
   );
+}
+
+export async function sendBudgetExhaustedEmail(
+  email: string,
+  planName: string,
+  exhaustedAmountUsd: number,
+  nextCycleDate: Date,
+): Promise<void> {
+  const nextCycleDateStr = nextCycleDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const template = emailTemplates.budgetExhausted(planName, exhaustedAmountUsd, nextCycleDateStr);
+  await sendEmail(email, template.subject, template.html, template.text);
 }

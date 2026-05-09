@@ -255,6 +255,44 @@ export const emailTemplates = {
       text: `The Augustus support team has replied to your ticket ${ticketReference}:\n\n${replyBody}\n\nLog in to your dashboard to view the full conversation.`,
     };
   },
+
+  // ─── Requirements: 2.5, 2.7 ──────────────────────────────────────────────
+  subscriptionExpired(
+    planName: string,
+    expiryDate: string,
+    reactivationUrl: string,
+  ): { subject: string; html: string; text: string } {
+    return {
+      subject: `Your Augustus ${planName} subscription has expired`,
+      html: `
+        <h2>Subscription Expired</h2>
+        <p>Your <strong>${planName}</strong> plan expired on <strong>${expiryDate}</strong>.</p>
+        <p>Your account has been suspended. To restore access, please reactivate your subscription.</p>
+        <p><a href="${reactivationUrl}" style="display:inline-block;padding:10px 20px;background:#3182ce;color:#fff;text-decoration:none;border-radius:4px;">Reactivate Subscription</a></p>
+        <p>If the button above does not work, copy and paste this link into your browser:</p>
+        <p><a href="${reactivationUrl}">${reactivationUrl}</a></p>
+      `,
+      text: `Your Augustus ${planName} plan expired on ${expiryDate}.\n\nYour account has been suspended. To restore access, reactivate your subscription:\n\n${reactivationUrl}`,
+    };
+  },
+
+  // ─── Requirements: 3.6 ───────────────────────────────────────────────────
+  budgetExhausted(
+    planName: string,
+    exhaustedAmountUsd: number,
+    nextCycleDate: string,
+  ): { subject: string; html: string; text: string } {
+    return {
+      subject: `Your Augustus ${planName} AI budget has been exhausted`,
+      html: `
+        <h2>AI Token Budget Exhausted</h2>
+        <p>Your <strong>${planName}</strong> plan's monthly AI budget of <strong>$${exhaustedAmountUsd.toFixed(2)}</strong> has been fully consumed.</p>
+        <p>AI Sales Agent responses have been suspended for your account until the next billing cycle begins on <strong>${nextCycleDate}</strong>.</p>
+        <p>To restore AI access immediately, consider upgrading your plan.</p>
+      `,
+      text: `Your Augustus ${planName} plan's monthly AI budget of $${exhaustedAmountUsd.toFixed(2)} has been fully consumed.\n\nAI Sales Agent responses have been suspended until your next billing cycle begins on ${nextCycleDate}.\n\nTo restore AI access immediately, consider upgrading your plan.`,
+    };
+  },
 };
 
 // ─── Task 14.3: Support ticket acknowledgement ────────────────────────────────

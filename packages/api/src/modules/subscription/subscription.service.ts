@@ -216,6 +216,15 @@ export async function upgradePlan(
     [newTier, newPlan.priceUsd, paynowReference, current.id],
   );
 
+  // Re-evaluate token budget after upgrade — lifts suspension if new cap covers accumulated cost
+  // Requirements: 4.4
+  try {
+    const { reevaluateBudgetAfterUpgrade } = await import('../token-budget/token-budget.service.js');
+    await reevaluateBudgetAfterUpgrade(businessId);
+  } catch (err) {
+    console.error(`[Subscription] Failed to re-evaluate budget after upgrade for business ${businessId}:`, err);
+  }
+
   // Send in-app notification for upgrade
   const { notifySubscriptionUpdate } = await import('../notification/in-app-notification.helpers.js');
   void notifySubscriptionUpdate(businessId, 'upgraded', {

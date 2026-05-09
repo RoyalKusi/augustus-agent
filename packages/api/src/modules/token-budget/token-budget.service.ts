@@ -10,6 +10,7 @@ import { getPlan, type PlanTier } from '../subscription/plans.js';
 import {
   sendBudgetAlert80Email,
   sendBudgetAlert95Email,
+  sendBudgetExhaustedEmail,
 } from '../../services/notification.stub.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ interface TokenUsageRow {
   accumulated_cost_usd: string;
   alert_80_sent: boolean;
   alert_95_sent: boolean;
+  alert_100_sent: boolean;
   suspended: boolean;
   updated_at: Date;
 }
@@ -144,15 +146,106 @@ async function evaluateThresholds(
     updates.push(`alert_95_sent = TRUE`);
   }
 
-  // 100% suspension — Property 10
+  // 100% exhaustion alert — Requirements 3.3, 3.4, 3.5
+  if (pct >= 1.0 && !usage.alert_100_sent) {
+    // Fetch plan name and next cycle date from the active subscription
+    let planName = 'your plan';
+    let nextCycleDate = new Date();
+    try {
+      const subResult = await pool.query<{ plan: PlanTier; billing_cycle_start: string; billing_months: number }>(
+        `SELECT plan, TO_CHAR(billing_cycle_start, 'YYYY-MM-DD') AS billing_cycle_start, billing_months
+         FROM subscriptions
+         WHERE business_id = $1 AND status = 'active'
+         ORDER BY activation_timestamp DESC
+         LIMIT 1`,
+        [businessId],
+      );
+      if (subResult.rows.length > 0) {
+        const sub = subResult.rows[0];
+        planName = sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1);
+        const cycleStart = new Date(sub.billing_cycle_start);
+        cycleStart.setMonth(cycleStart.getMonth() + (sub.billing_months ?? 1));
+        nextCycleDate = cycleStart;
+      }
+    } catch (err) {
+      console.error(`[TokenBudget] Failed to fetch subscription info for business ${businessId}:`, err);
+    }
+
+    try {
+      await sendBudgetExhaustedEmail(
+        businessEmail,
+        planName,
+        Number(usage.accumulated_cost_usd),
+        nextCycleDate,
+      );
+    } catch (err) {
+      console.error(
+        `[TokenBudget] Failed to send budget exhausted email for business ${businessId} (100%):`,
+        err,
+      );
+    }
+    // Always set alert_100_sent regardless of email success to prevent infinite retry loops
+    updates.push(`alert_100_sent = TRUE`);
+  }
+
+  // 100% suspension — Property 10, Requirement 6.2
   if (pct >= 1.0 && !usage.suspended) {
     updates.push(`suspended = TRUE`);
+
+    // Audit log write on budget exhaustion suspension — Requirement 6.2
+    try {
+      await pool.query(
+        `INSERT INTO operator_audit_log (action_type, target_business_id, details)
+         VALUES ($1, $2, $3)`,
+        [
+          'token_budget_exhausted',
+          businessId,
+          JSON.stringify({
+            billingCycleStart: usage.billing_cycle_start,
+            accumulatedCostUsd: Number(usage.accumulated_cost_usd),
+            capUsd,
+          }),
+        ],
+      );
+    } catch (err) {
+      console.error(
+        `[TokenBudget] Failed to write audit log for budget exhaustion suspension of business ${businessId}:`,
+        err,
+      );
+    }
   }
 
   if (updates.length > 0) {
     await pool.query(
       `UPDATE token_usage
        SET ${updates.join(', ')}, updated_at = NOW()
+       WHERE business_id = $1 AND billing_cycle_start = $2`,
+      [businessId, usage.billing_cycle_start],
+    );
+  }
+}
+
+// ─── Task 4.4: Re-evaluate budget after plan upgrade ─────────────────────────
+
+/**
+ * Re-evaluate the token budget after a plan upgrade.
+ * If the new cap is higher than the accumulated cost and the business is currently
+ * suspended, lift the suspension so AI responses can resume.
+ * Requirements: 4.4
+ */
+export async function reevaluateBudgetAfterUpgrade(businessId: string): Promise<void> {
+  const { usage, capUsd } = await getUsageAndCap(businessId);
+
+  if (!usage) {
+    return;
+  }
+
+  const accumulated = Number(usage.accumulated_cost_usd);
+
+  if (usage.suspended && accumulated < capUsd) {
+    await pool.query(
+      `UPDATE token_usage
+       SET suspended = FALSE, updated_at = NOW()
        WHERE business_id = $1 AND billing_cycle_start = $2`,
       [businessId, usage.billing_cycle_start],
     );
