@@ -12,6 +12,7 @@ import {
   listTrainingEntries,
   deleteTrainingEntry,
   updateWhatsAppProfile,
+  summariseDocumentAndStore,
   isFileSizeValid,
   MAX_FILE_SIZE_BYTES,
   type TrainingDataType,
@@ -79,6 +80,13 @@ export async function trainingRoutes(app: FastifyInstance): Promise<void> {
 
       if (type === 'logo' && fileBuffer) {
         void updateWhatsAppProfile(businessId, fileUrl ?? '', fileBuffer, mimetype);
+      }
+
+      // For document uploads: extract and summarise content with Claude immediately.
+      // The summary is stored once and used as permanent knowledge — the file is not re-read.
+      if (type === 'document' && fileBuffer) {
+        void summariseDocumentAndStore(entry.id, fileBuffer, mimetype, displayName)
+          .catch((err) => app.log.error({ err, entryId: entry.id }, '[training] document summarisation failed'));
       }
 
       return reply.status(201).send(entry);

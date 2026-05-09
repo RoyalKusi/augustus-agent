@@ -23,6 +23,7 @@ export interface TrainingDataEntry {
   content: string | null;
   fileUrl: string | null;
   fileSizeBytes: number | null;
+  documentSummary: string | null;
   createdAt: Date;
   updatedAt: Date | null;
 }
@@ -34,6 +35,7 @@ interface TrainingDataRow {
   content: string | null;
   file_url: string | null;
   file_size_bytes: number | null;
+  document_summary: string | null;
   created_at: Date;
   updated_at: Date | null;
 }
@@ -58,6 +60,7 @@ function rowToEntry(row: TrainingDataRow): TrainingDataEntry {
     content: row.content,
     fileUrl: row.file_url,
     fileSizeBytes: row.file_size_bytes,
+    documentSummary: row.document_summary ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -106,6 +109,133 @@ export async function deleteTrainingEntry(
     [entryId, businessId],
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+// ─── Document summarisation (one-time, on upload) ─────────────────────────────
+
+/**
+ * Supported MIME types for Claude document extraction.
+ * Claude natively reads PDFs and plain text. For other types we send as plain text.
+ */
+const CLAUDE_DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+]);
+
+/**
+ * Extract and summarise a document using Claude on upload.
+ * The summary is stored in training_data.document_summary and used as
+ * permanent knowledge in the conversation engine system prompt.
+ * The raw file is NOT re-read after this — this runs exactly once.
+ */
+export async function summariseDocumentAndStore(
+  entryId: string,
+  fileBuffer: Buffer,
+  mimeType: string,
+  filename: string,
+): Promise<void> {
+  const { config } = await import('../../config.js');
+
+  if (!config.claude.apiKey) {
+    console.warn('[Training] CLAUDE_API_KEY not set — skipping document summarisation');
+    return;
+  }
+
+  const base64 = fileBuffer.toString('base64');
+  const isPdf = mimeType === 'application/pdf';
+  const isText = mimeType.startsWith('text/');
+
+  let requestBody: Record<string, unknown>;
+
+  if (isPdf) {
+    // Use Claude's native PDF document block
+    requestBody = {
+      model: config.claude.model || 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: base64,
+              },
+            },
+            {
+              type: 'text',
+              text: `You are extracting knowledge from a business document called "${filename}". 
+Extract ALL useful information that a sales agent should know: product details, pricing, policies, procedures, FAQs, brand guidelines, scripts, objection handling, and any other business-relevant content.
+Format the output as structured knowledge blocks with clear headings. Be thorough — this summary will be the agent's only reference to this document.
+Do NOT include meta-commentary about the document itself. Only output the extracted knowledge.`,
+            },
+          ],
+        },
+      ],
+    };
+  } else if (isText) {
+    // Send text content directly
+    const textContent = fileBuffer.toString('utf-8').slice(0, 50000); // cap at 50k chars
+    requestBody = {
+      model: config.claude.model || 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      messages: [
+        {
+          role: 'user',
+          content: `You are extracting knowledge from a business document called "${filename}".
+
+DOCUMENT CONTENT:
+${textContent}
+
+Extract ALL useful information that a sales agent should know: product details, pricing, policies, procedures, FAQs, brand guidelines, scripts, objection handling, and any other business-relevant content.
+Format the output as structured knowledge blocks with clear headings. Be thorough — this summary will be the agent's only reference to this document.
+Do NOT include meta-commentary about the document itself. Only output the extracted knowledge.`,
+        },
+      ],
+    };
+  } else {
+    // Unsupported type — store a note
+    await pool.query(
+      `UPDATE training_data SET document_summary = $1, updated_at = NOW() WHERE id = $2`,
+      [`[Document: ${filename} — format not supported for text extraction. File stored at URL.]`, entryId],
+    );
+    return;
+  }
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': config.claude.apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(60_000), // 60s for large docs
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Claude document extraction failed: ${response.status} ${errText}`);
+  }
+
+  const data = await response.json() as { content: Array<{ type: string; text: string }> };
+  const summary = data.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim();
+
+  if (summary) {
+    await pool.query(
+      `UPDATE training_data SET document_summary = $1, updated_at = NOW() WHERE id = $2`,
+      [summary, entryId],
+    );
+    console.info(`[Training] Document summarised and stored for entry ${entryId} (${filename})`);
+  }
 }
 
 // ─── Task 11.4: WhatsApp profile update ──────────────────────────────────────
