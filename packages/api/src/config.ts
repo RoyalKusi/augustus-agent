@@ -43,7 +43,7 @@ export const config = {
 
   claude: {
     apiKey: process.env.CLAUDE_API_KEY ?? '',
-    model: optional('CLAUDE_MODEL', 'claude-sonnet-4-6'),
+    model: optional('CLAUDE_MODEL', 'claude-haiku-20240307'),
   },
 
   meta: {

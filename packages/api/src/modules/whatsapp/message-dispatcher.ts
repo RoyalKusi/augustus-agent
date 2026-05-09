@@ -56,11 +56,13 @@ export type CarouselProduct = {
   description?: string;
 };
 
-/** Req 6.2: at least 1 and at most 10 products */
+/** Req 6.2: at least 2 and at most 10 products (caller must pad to minimum 2) */
 export type CarouselMessage = {
   type: 'carousel';
   to: string;
-  products: CarouselProduct[]; // 1–10 products
+  products: CarouselProduct[]; // 2–10 products
+  /** When true, all image headers are stripped — used as a retry strategy for broken images */
+  forceNoImages?: boolean;
 };
 
 export type OutboundMessage =
@@ -150,57 +152,31 @@ function buildQuickReplyPayload(msg: QuickReplyMessage): Record<string, unknown>
 
 /**
  * Placeholder image URL for products without images.
- * Used to ensure consistent carousel card appearance when some products lack images.
  * WhatsApp requires all carousel cards to have the same header type — if any card
- * has an image header, all cards must have one.
+ * has an image header, all cards must have one. This placeholder ensures consistency.
  */
 const PRODUCT_PLACEHOLDER_IMAGE = 'https://placehold.co/400x400/e2e8f0/718096/png?text=No+Image';
 
 /**
- * Product display for WhatsApp:
- * - 2–10 products: native horizontally scrollable carousel
- *   - Products with images use their own image
- *   - Products WITHOUT images use a placeholder so all cards look consistent
- * - 1 product: image (own or placeholder) + quick reply button
+ * Build a native WhatsApp horizontal carousel payload.
+ *
+ * Always uses the interactive carousel format (type: 'carousel') regardless of
+ * product count. WhatsApp requires at least 2 cards — the caller is responsible
+ * for padding to 2 before calling this function.
+ *
+ * Image consistency rule: if ANY product has a valid image URL, ALL cards get an
+ * image header (products without images receive the placeholder). If NO product
+ * has an image, no headers are added and cards render as text-only.
+ *
+ * The `forceNoImages` flag strips all image headers — used as a retry strategy
+ * when Meta rejects the payload due to broken image URLs.
  */
-function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
+function buildCarouselPayload(msg: CarouselMessage, forceNoImages = false): Record<string, unknown> {
   const products = msg.products.slice(0, 10);
 
-  // Check if ANY product has an image — if so, all cards need an image header
-  // (WhatsApp requires consistent header types across carousel cards)
-  const anyHasImage = products.some(p => p.imageUrl && p.imageUrl.startsWith('http'));
+  // Determine whether to include image headers
+  const anyHasImage = !forceNoImages && products.some(p => p.imageUrl && p.imageUrl.startsWith('http'));
 
-  if (products.length === 1) {
-    const p = products[0];
-    const imageUrl = p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : (anyHasImage ? PRODUCT_PLACEHOLDER_IMAGE : undefined);
-    const bodyText = `*${p.name}*\n${p.currency} ${p.price.toFixed(2)}${p.description ? '\n' + p.description.slice(0, 100) : ''}`;
-
-    if (imageUrl) {
-      return {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: msg.to,
-        type: 'image',
-        image: { link: imageUrl, caption: bodyText },
-      };
-    }
-    // No images at all — interactive button only
-    return {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: msg.to,
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        body: { text: bodyText },
-        action: {
-          buttons: [{ type: 'reply', reply: { id: `order_${p.id}`, title: '🛒 Order Now' } }],
-        },
-      },
-    };
-  }
-
-  // 2–10 products: native carousel
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -224,13 +200,11 @@ function buildCarouselPayload(msg: CarouselMessage): Record<string, unknown> {
             },
           };
 
-          // Use product image if available, otherwise placeholder if any product has an image
-          // (ensures consistent card appearance across the carousel)
-          const imageUrl = p.imageUrl && p.imageUrl.startsWith('http')
-            ? p.imageUrl
-            : anyHasImage ? PRODUCT_PLACEHOLDER_IMAGE : undefined;
-
-          if (imageUrl) {
+          if (anyHasImage) {
+            // Use the product's own image if valid, otherwise the placeholder
+            const imageUrl = p.imageUrl && p.imageUrl.startsWith('http')
+              ? p.imageUrl
+              : PRODUCT_PLACEHOLDER_IMAGE;
             card['header'] = { type: 'image', image: { link: imageUrl } };
           }
 
@@ -274,10 +248,10 @@ export async function sendMessage(
   // ── 2. Validate carousel bounds (Req 6.2) ─────────────────────────────────
   if (message.type === 'carousel') {
     const count = message.products.length;
-    if (count < 1 || count > 10) {
+    if (count < 2 || count > 10) {
       return {
         success: false,
-        errorMessage: `Carousel must contain between 1 and 10 products; got ${count}.`,
+        errorMessage: `Carousel must contain between 2 and 10 products; got ${count}.`,
       };
     }
   }
@@ -301,7 +275,7 @@ export async function sendMessage(
       payload = buildQuickReplyPayload(message);
       break;
     case 'carousel':
-      payload = buildCarouselPayload(message);
+      payload = buildCarouselPayload(message, message.forceNoImages ?? false);
       break;
   }
 

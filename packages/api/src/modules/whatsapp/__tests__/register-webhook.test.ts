@@ -80,10 +80,11 @@ describe('registerWebhook', () => {
     expect(url).toContain('waba-123/subscribed_apps');
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer test-access-token');
 
-    // Verify the body contains callback_url and verify_token
-    const body = JSON.parse(init.body as string) as Record<string, string>;
-    expect(body.callback_url).toBe('https://api.example.com/webhooks/whatsapp/biz-1');
-    expect(body.verify_token).toBe('my-verify-token');
+    // The /subscribed_apps endpoint does not require a callback_url in the body —
+    // the webhook callback URL is configured in the Meta App Dashboard, not per-call.
+    // The body should be empty (or minimal).
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(Object.keys(body)).toHaveLength(0);
 
     // Verify DB was updated to active
     const updateCall = mockQuery.mock.calls[1];

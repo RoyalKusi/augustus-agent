@@ -18,7 +18,7 @@ import { createConsumerGroup, consumeWebhookEvents, reprocessPendingEvents } fro
 import type { WebhookEvent } from '../../queue/producer.js';
 import { detectIntent } from './intent-detector.js';
 
-export const CLAUDE_SONNET_MODEL = (function() {
+export const CLAUDE_HAIKU_MODEL = (function() {
   const m = config.claude.model;
   if (m && m.trim()) return m.trim();
   return 'claude-sonnet-4-6';
@@ -88,7 +88,7 @@ export async function proactiveSummarise(conversationId: string, businessId: str
       method: 'POST',
       headers: { 'x-api-key': config.claude.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: CLAUDE_SONNET_MODEL,
+        model: CLAUDE_HAIKU_MODEL,
         max_tokens: 150,
         messages: [{ role: 'user', content: summaryPrompt }],
       }),
@@ -198,12 +198,12 @@ export function detectLanguage(text) {
   return 'English';
 }
 
-export async function callClaudeSonnet(systemPrompt, contextMessages, userMessage, maxTokens = 300) {
+export async function callClaudeHaiku(systemPrompt, contextMessages, userMessage, maxTokens = 300) {
   const messages = [
     ...contextMessages.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
-  const body = { model: CLAUDE_SONNET_MODEL, max_tokens: maxTokens, system: systemPrompt, messages };
+  const body = { model: CLAUDE_HAIKU_MODEL, max_tokens: maxTokens, system: systemPrompt, messages };
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': config.claude.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -274,7 +274,7 @@ export async function summariseAndResetSession(conversationId, contextMessages) 
       method: 'POST',
       headers: { 'x-api-key': config.claude.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: CLAUDE_SONNET_MODEL,
+        model: CLAUDE_HAIKU_MODEL,
         max_tokens: 150,
         messages: [{ role: 'user', content: 'Summarise this sales conversation in 2-3 sentences. Focus on what the customer wants, products discussed, objections, and sale stage.\n\n' + transcript }],
       }),
@@ -491,7 +491,7 @@ export async function processInboundMessage(msg) {
 
   let claudeResponse;
   try {
-    claudeResponse = await callClaudeSonnet(systemPrompt, contextMessages, messageText, maxTokens);
+    claudeResponse = await callClaudeHaiku(systemPrompt, contextMessages, messageText, maxTokens);
   } catch (err) {
     console.error('[ConversationEngine] Claude API error:', err);
     const fallbackText = 'Our AI assistant is temporarily unavailable. Please try again shortly.';

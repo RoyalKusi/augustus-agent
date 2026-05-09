@@ -125,7 +125,7 @@ jobs:
             S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
             S3_BUCKET=${{ secrets.S3_BUCKET }}
             CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
-            CLAUDE_MODEL=claude-sonnet-4-6
+            CLAUDE_MODEL=claude-haiku-20240307
             META_APP_ID=${{ secrets.META_APP_ID }}
             META_APP_SECRET=${{ secrets.META_APP_SECRET }}
             META_WEBHOOK_VERIFY_TOKEN=${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}

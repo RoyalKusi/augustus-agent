@@ -20,7 +20,7 @@ vi.hoisted(() => {
   process.env.META_APP_SECRET = 'test-app-secret';
   process.env.ENCRYPTION_KEY = 'a'.repeat(64);
   process.env.CLAUDE_API_KEY = process.env.CLAUDE_API_KEY ?? 'test-claude-key';
-  process.env.CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-test';
+  process.env.CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-haiku-test';
 });
 
 // ── Environment setup ─────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ beforeAll(() => {
   process.env.META_APP_SECRET = 'test-app-secret';
   process.env.ENCRYPTION_KEY = 'a'.repeat(64);
   process.env.CLAUDE_API_KEY = process.env.CLAUDE_API_KEY ?? 'test-claude-key';
-  process.env.CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-test';
+  process.env.CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-haiku-test';
 });
 
 // ── Mock dependencies ─────────────────────────────────────────────────────────

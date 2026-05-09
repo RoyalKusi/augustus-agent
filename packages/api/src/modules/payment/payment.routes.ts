@@ -18,6 +18,7 @@ import {
   updatePaymentSettings,
   type OrderItem,
 } from './payment.service.js';
+import { requestOtp, confirmOtp, WithdrawalOtpError } from './withdrawal-otp.service.js';
 
 export async function paymentRoutes(app: FastifyInstance): Promise<void> {
   // ── Task 9.1: Generate payment link ──────────────────────────────────────
@@ -130,7 +131,57 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
 
   // ── Task 9.8: Withdrawal request (Property 33) ───────────────────────────
 
-  // POST /payments/withdrawals — create withdrawal request
+  // POST /payments/withdrawals/request-otp — step 1: request withdrawal OTP (2FA)
+  app.post('/payments/withdrawals/request-otp', { preHandler: authenticate }, async (request, reply) => {
+    const businessId = request.businessId;
+    const body = request.body as {
+      amount_usd?: number;
+      paynow_merchant_ref?: string;
+    };
+
+    try {
+      await requestOtp(businessId, body.amount_usd as number, body.paynow_merchant_ref as string);
+      return reply.send({ message: 'Verification code sent to your registered email.' });
+    } catch (err) {
+      if (err instanceof WithdrawalOtpError) {
+        const res: Record<string, unknown> = { error: err.message };
+        if (err.availableBalance !== undefined) res.availableBalance = err.availableBalance;
+        if (err.retryAfter !== undefined) res.retryAfter = err.retryAfter;
+        return reply.status(err.statusCode).send(res);
+      }
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed to send OTP.' });
+    }
+  });
+
+  // POST /payments/withdrawals/confirm — step 2: verify OTP and create withdrawal
+  app.post('/payments/withdrawals/confirm', { preHandler: authenticate }, async (request, reply) => {
+    const businessId = request.businessId;
+    const body = request.body as {
+      otp?: string;
+      amount_usd?: number;
+      paynow_merchant_ref?: string;
+    };
+
+    try {
+      const result = await confirmOtp(
+        businessId,
+        body.otp as string,
+        body.amount_usd as number,
+        body.paynow_merchant_ref as string,
+      );
+      return reply.status(201).send(result);
+    } catch (err) {
+      if (err instanceof WithdrawalOtpError) {
+        const res: Record<string, unknown> = { error: err.message };
+        if (err.availableBalance !== undefined) res.availableBalance = err.availableBalance;
+        if (err.retryAfter !== undefined) res.retryAfter = err.retryAfter;
+        return reply.status(err.statusCode).send(res);
+      }
+      return reply.status(500).send({ error: err instanceof Error ? err.message : 'Failed to confirm withdrawal.' });
+    }
+  });
+
+  // POST /payments/withdrawals — create withdrawal request (legacy, kept for backward compatibility)
   app.post('/payments/withdrawals', { preHandler: authenticate }, async (request, reply) => {
     const businessId = request.businessId;
     const body = request.body as {

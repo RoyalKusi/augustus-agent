@@ -3,7 +3,7 @@ import * as fc from 'fast-check';
 
 beforeAll(() => {
   process.env.ENCRYPTION_KEY = 'a'.repeat(64);
-  process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
+  process.env.CLAUDE_MODEL = 'claude-haiku-20240307';
   process.env.CLAUDE_API_KEY = 'test-key';
 });
 
@@ -27,7 +27,7 @@ import { sendMessage } from '../../whatsapp/message-dispatcher.js';
 import {
   filterContextWindow, isManualInterventionActive, buildSystemPrompt,
   detectLanguage, parseClaudeResponse, isSessionExpired,
-  CLAUDE_SONNET_MODEL, MAX_CONTEXT_MESSAGES, CONTEXT_WINDOW_MS,
+  CLAUDE_HAIKU_MODEL, MAX_CONTEXT_MESSAGES, CONTEXT_WINDOW_MS,
   processInboundMessage, type ConversationRow, type InboundMessage,
 } from '../conversation-engine.service.js';
 
@@ -51,22 +51,22 @@ function makeConv(manual: boolean, overrides: Partial<ConversationRow> = {}): Co
 // Feature: augustus-ai-sales-platform, Property 13: Claude Sonnet Is the Inference Model
 // **Validates: Requirements 5.3**
 describe('Property 13: Claude Sonnet Is the Inference Model', () => {
-  it('CLAUDE_SONNET_MODEL is set to claude-sonnet-4-6', () => { expect(CLAUDE_SONNET_MODEL).toBe('claude-sonnet-4-6'); });
-  it('model parameter sent to Claude API always equals CLAUDE_SONNET_MODEL', async () => {
+  it('CLAUDE_HAIKU_MODEL is set to claude-sonnet-4-5-20251001', () => { expect(CLAUDE_HAIKU_MODEL).toBe('claude-sonnet-4-5-20251001'); });
+  it('model parameter sent to Claude API always equals CLAUDE_HAIKU_MODEL', async () => {
     await fc.assert(fc.asyncProperty(strArb, strArb, async (sp, um) => {
       let body: Record<string, unknown> | null = null;
       vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (_u, init) => { body = JSON.parse((init?.body as string) ?? '{}') as Record<string, unknown>; return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Hi' }], usage: { input_tokens: 10, output_tokens: 5 } }), { status: 200 }); });
-      const { callClaudeSonnet } = await import('../conversation-engine.service.js');
-      await callClaudeSonnet(sp, [], um);
-      expect(body).not.toBeNull(); expect(body!['model']).toBe(CLAUDE_SONNET_MODEL);
+      const { callClaudeHaiku } = await import('../conversation-engine.service.js');
+      await callClaudeHaiku(sp, [], um);
+      expect(body).not.toBeNull(); expect(body!['model']).toBe(CLAUDE_HAIKU_MODEL);
     }), { numRuns: 25 });
   });
   it('model is never gpt', async () => {
     await fc.assert(fc.asyncProperty(strArb, strArb, async (sp, um) => {
       let m: string | null = null;
       vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (_u, init) => { m = (JSON.parse((init?.body as string) ?? '{}') as Record<string, unknown>)['model'] as string; return new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 5, output_tokens: 3 } }), { status: 200 }); });
-      const { callClaudeSonnet } = await import('../conversation-engine.service.js');
-      await callClaudeSonnet(sp, [], um);
+      const { callClaudeHaiku } = await import('../conversation-engine.service.js');
+      await callClaudeHaiku(sp, [], um);
       expect(m).not.toBeNull(); expect(m!.toLowerCase()).not.toContain('gpt');
     }), { numRuns: 25 });
   });

@@ -181,7 +181,7 @@ describe('sendMessage — carousel', () => {
     }));
   }
 
-  it('sends a carousel with valid products (1–10) as an interactive list', async () => {
+  it('sends a carousel with 2–10 products as a native horizontal carousel', async () => {
     mockIntegration();
     const fetchSpy = mockMetaSuccess();
 
@@ -200,13 +200,16 @@ describe('sendMessage — carousel', () => {
     expect(body.type).toBe('interactive');
     const interactive = body.interactive as {
       type: string;
-      action: { button: string; sections: Array<{ rows: unknown[] }> };
+      action: { cards: Array<{ card_index: number; body: { text: string }; action: unknown; header?: unknown }> };
     };
-    expect(interactive.type).toBe('list');
-    // Req 6.1: "View Details" button label
-    expect(interactive.action.button).toBe('View Details');
-    // 3 rows for 3 products
-    expect(interactive.action.sections[0].rows).toHaveLength(3);
+    // Must use the native carousel type
+    expect(interactive.type).toBe('carousel');
+    // 3 cards for 3 products
+    expect(interactive.action.cards).toHaveLength(3);
+    // Each card has the correct index
+    expect(interactive.action.cards[0].card_index).toBe(0);
+    expect(interactive.action.cards[1].card_index).toBe(1);
+    expect(interactive.action.cards[2].card_index).toBe(2);
   });
 
   it('rejects carousel with 0 products (Req 6.2)', async () => {
@@ -220,7 +223,21 @@ describe('sendMessage — carousel', () => {
     const result = await sendMessage('biz-1', msg);
 
     expect(result.success).toBe(false);
-    expect(result.errorMessage).toMatch(/between 1 and 10/);
+    expect(result.errorMessage).toMatch(/between 2 and 10/);
+  });
+
+  it('rejects carousel with 1 product (minimum is 2 for native carousel)', async () => {
+    mockIntegration();
+
+    const msg: CarouselMessage = {
+      type: 'carousel',
+      to: '+263771234567',
+      products: makeProducts(1),
+    };
+    const result = await sendMessage('biz-1', msg);
+
+    expect(result.success).toBe(false);
+    expect(result.errorMessage).toMatch(/between 2 and 10/);
   });
 
   it('rejects carousel with 11 products (Req 6.2)', async () => {
@@ -234,17 +251,17 @@ describe('sendMessage — carousel', () => {
     const result = await sendMessage('biz-1', msg);
 
     expect(result.success).toBe(false);
-    expect(result.errorMessage).toMatch(/between 1 and 10/);
+    expect(result.errorMessage).toMatch(/between 2 and 10/);
   });
 
-  it('accepts carousel with exactly 1 product', async () => {
+  it('accepts carousel with exactly 2 products (minimum)', async () => {
     mockIntegration();
     mockMetaSuccess();
 
     const msg: CarouselMessage = {
       type: 'carousel',
       to: '+263771234567',
-      products: makeProducts(1),
+      products: makeProducts(2),
     };
     const result = await sendMessage('biz-1', msg);
     expect(result.success).toBe(true);
@@ -263,7 +280,7 @@ describe('sendMessage — carousel', () => {
     expect(result.success).toBe(true);
   });
 
-  it('includes product name and price in each carousel row (Req 6.1)', async () => {
+  it('includes product name and price in each carousel card body (Req 6.1)', async () => {
     mockIntegration();
     const fetchSpy = mockMetaSuccess();
 
@@ -279,17 +296,87 @@ describe('sendMessage — carousel', () => {
       (fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string,
     ) as Record<string, unknown>;
     const interactive = body.interactive as {
-      action: { sections: Array<{ rows: Array<{ id: string; title: string; description: string }> }> };
+      action: { cards: Array<{ card_index: number; body: { text: string }; action: { buttons: Array<{ reply: { id: string } }> } }> };
     };
-    const rows = interactive.action.sections[0].rows;
+    const cards = interactive.action.cards;
 
-    expect(rows[0].id).toBe('prod-0');
-    expect(rows[0].title).toContain('Product 0');
-    expect(rows[0].description).toContain('9.99');
+    // Card 0: Product 0
+    expect(cards[0].body.text).toContain('Product 0');
+    expect(cards[0].body.text).toContain('9.99');
+    expect(cards[0].action.buttons[0].reply.id).toBe('order_prod-0');
 
-    expect(rows[1].id).toBe('prod-1');
-    expect(rows[1].title).toContain('Product 1');
-    expect(rows[1].description).toContain('10.99');
+    // Card 1: Product 1
+    expect(cards[1].body.text).toContain('Product 1');
+    expect(cards[1].body.text).toContain('10.99');
+    expect(cards[1].action.buttons[0].reply.id).toBe('order_prod-1');
+  });
+
+  it('adds image headers when products have valid image URLs', async () => {
+    mockIntegration();
+    const fetchSpy = mockMetaSuccess();
+
+    const msg: CarouselMessage = {
+      type: 'carousel',
+      to: '+263771234567',
+      products: makeProducts(2),
+    };
+    await sendMessage('biz-1', msg);
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string,
+    ) as Record<string, unknown>;
+    const interactive = body.interactive as {
+      action: { cards: Array<{ header?: { type: string; image: { link: string } } }> };
+    };
+    // All cards should have image headers since all products have images
+    expect(interactive.action.cards[0].header?.type).toBe('image');
+    expect(interactive.action.cards[1].header?.type).toBe('image');
+  });
+
+  it('uses placeholder for products without images when others have images', async () => {
+    mockIntegration();
+    const fetchSpy = mockMetaSuccess();
+
+    const products: CarouselProduct[] = [
+      { id: 'p1', name: 'With Image', price: 10, currency: 'USD', imageUrl: 'https://cdn.example.com/img.jpg' },
+      { id: 'p2', name: 'No Image', price: 20, currency: 'USD' }, // no imageUrl
+    ];
+    const msg: CarouselMessage = { type: 'carousel', to: '+263771234567', products };
+    await sendMessage('biz-1', msg);
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string,
+    ) as Record<string, unknown>;
+    const interactive = body.interactive as {
+      action: { cards: Array<{ header?: { type: string; image: { link: string } } }> };
+    };
+    // Card 0 has its own image
+    expect(interactive.action.cards[0].header?.image.link).toBe('https://cdn.example.com/img.jpg');
+    // Card 1 gets the placeholder
+    expect(interactive.action.cards[1].header?.image.link).toContain('placehold.co');
+  });
+
+  it('omits image headers when forceNoImages is true', async () => {
+    mockIntegration();
+    const fetchSpy = mockMetaSuccess();
+
+    const msg: CarouselMessage = {
+      type: 'carousel',
+      to: '+263771234567',
+      products: makeProducts(2),
+      forceNoImages: true,
+    };
+    await sendMessage('biz-1', msg);
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string,
+    ) as Record<string, unknown>;
+    const interactive = body.interactive as {
+      action: { cards: Array<{ header?: unknown }> };
+    };
+    // No headers when forceNoImages is set
+    expect(interactive.action.cards[0].header).toBeUndefined();
+    expect(interactive.action.cards[1].header).toBeUndefined();
   });
 });
 

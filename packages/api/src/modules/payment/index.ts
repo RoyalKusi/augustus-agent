@@ -30,3 +30,17 @@ export type {
   PaymentSettings,
   InvoiceMessage,
 } from './payment.service.js';
+export {
+  requestOtp,
+  confirmOtp,
+  generateOtp,
+  hashOtp,
+  computeOtpExpiry,
+  isOtpExpired,
+  isValidOtpFormat,
+  isValidAmount,
+  isValidMerchantRef,
+  isRateLimited,
+  buildWithdrawalOtpEmail,
+  WithdrawalOtpError,
+} from './withdrawal-otp.service.js';

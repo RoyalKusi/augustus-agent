@@ -68,7 +68,7 @@ S3_BUCKET=augustus
 
 # Anthropic Claude
 CLAUDE_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-sonnet-4-6
+CLAUDE_MODEL=claude-haiku-20240307
 
 # Meta / WhatsApp
 META_APP_ID=your-meta-app-id

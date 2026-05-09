@@ -191,6 +191,9 @@ describe('Subscription flow — mock end-to-end', () => {
           paynow: { integrationId: '', integrationKey: '', returnUrl: 'https://example.com', resultUrl: 'https://example.com', merchantEmail: '' },
           email: { provider: 'sendgrid', apiKey: '', fromAddress: '', fromName: '' },
           frontendUrl: 'http://localhost:5173',
+          claude: { apiKey: '', model: 'claude-sonnet-4-5-20251001' },
+          meta: { appId: '', appSecret: '', verifyToken: '', graphApiVersion: 'v19.0', embeddedSignupConfigId: '' },
+          jwt: { secret: 'test-secret', expiresIn: '24h' },
         },
       }));
 

@@ -43,7 +43,7 @@
 
 - [x] 4. Token Budget Controller
   - [x] 4.1 Implement per-business monthly cost accumulator in PostgreSQL with billing cycle reset
-  - [x] 4.2 Implement atomic cost increment after each Claude Sonnet inference call
+  - [x] 4.2 Implement atomic cost increment after each Claude Haiku inference call
   - [x] 4.3 Implement tier cap enforcement: Silver $A, Gold $B, Platinum $C (configurable by system admin) — Property 8
   - [x] 4.4 Implement 80% and 95% threshold alert emails (no duplicate alerts per cycle) — Property 9
   - [x] 4.5 Implement 100% cap suspension of AI responses — Property 10
@@ -88,9 +88,9 @@
   - [x] 7.1 Implement message queue consumer for inbound WhatsApp events
   - [x] 7.2 Implement conversation context loading from Redis (30-message / 60-minute window) — Property 14
   - [x] 7.3 Implement manual intervention status check before AI processing — Property 15
-  - [x] 7.4 Implement budget check before each Claude Sonnet inference call — Property 8
+  - [x] 7.4 Implement budget check before each Claude Haiku inference call — Property 8
   - [x] 7.5 Implement goal-driven system prompt construction (sales directives + business training data + catalogue context)
-  - [x] 7.6 Implement Claude Sonnet API call with Sonnet model identifier enforced — Property 13
+  - [x] 7.6 Implement Claude Haiku API call with Haiku model identifier enforced — Property 13
   - [x] 7.7 Implement response parsing for structured actions (carousel trigger, payment trigger)
   - [x] 7.8 Implement session expiry: summarise context and start new window at 30 messages or 60 minutes
   - [x] 7.9 Implement language detection and response language matching — Property 14 (context)
@@ -160,7 +160,7 @@
   - [x] 13.3 Implement business suspension endpoint (deactivates AI and WhatsApp services) — Property 36
   - [x] 13.4 Implement business reactivation endpoint (restores prior active state) — Property 37
   - [x] 13.5 Implement operator audit log recording for all operator actions
-  - [x] 13.6 Implement Claude Sonnet usage metrics endpoint (tokens, calls, cost, per-business breakdown)
+  - [x] 13.6 Implement Claude Haiku usage metrics endpoint (tokens, calls, cost, per-business breakdown)
   - [x] 13.7 Implement Meta Cloud API usage metrics endpoint (messages sent/received, per-business breakdown)
   - [x] 13.8 Implement platform-wide 90% cost alert trigger — Property 38
   - [x] 13.9 Implement hard token limit override endpoint for individual businesses
