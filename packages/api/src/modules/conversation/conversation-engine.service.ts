@@ -180,7 +180,11 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
   // BEHAVIOUR RULES
   parts.push(
     `## Behaviour Rules\n` +
-    `- Keep replies to 1-2 sentences — natural chat, not a sales pitch\n` +
+    `- BREVITY IS ESSENTIAL: WhatsApp is a chat app. Most replies must be 1 sentence. Maximum 2 sentences for complex answers. Never write paragraphs.\n` +
+    `- If the customer asks a simple question, give a simple answer — one line.\n` +
+    `- If the customer asks about a product, give the key detail + price in one line, then ask if they want it.\n` +
+    `- If the customer is just chatting, match their energy with a short reply.\n` +
+    `- Only expand beyond 2 sentences when explaining payment steps or listing multiple products.\n` +
     `- Match the customer's energy: casual if they're casual, direct if they're direct\n` +
     `- Use the conversation history — never repeat yourself\n` +
     `- Never send a payment link on a greeting or casual message\n` +
@@ -188,8 +192,8 @@ export function buildSystemPrompt(trainingData, products, detectedLanguage, cont
     `- Only use CAROUSEL_TRIGGER when the customer explicitly asks to see products\n` +
     `- Never use CAROUSEL_TRIGGER if products were already shown unless the customer asks again\n` +
     `- If a payment link was already sent, do NOT send it again unless the customer explicitly asks\n` +
-    `- If the customer says "ok", "thanks", "got it" — respond naturally, do not resend anything\n` +
-    `- If unsure which product the customer wants, ask before using PAYMENT_TRIGGER\n` +
+    `- If the customer says "ok", "thanks", "got it" — respond naturally in one short line, do not resend anything\n` +
+    `- If unsure which product the customer wants, ask in one short question before using PAYMENT_TRIGGER\n` +
     `- Never output raw trigger syntax in conversational text — only on its own line`
   );
 
@@ -550,7 +554,8 @@ export async function processInboundMessage(msg) {
   })();
 
   // Use higher token limit for payment/order intents so PAYMENT_TRIGGER JSON doesn't get cut off
-  const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 800 : 500;
+  // Otherwise keep responses tight — WhatsApp is a chat medium, not an essay platform
+  const maxTokens = (intentResult.intent === 'ready_to_buy' || intentResult.intent === 'product_inquiry') ? 400 : 180;
 
   let claudeResponse;
   try {
