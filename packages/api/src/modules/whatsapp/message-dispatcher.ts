@@ -160,21 +160,25 @@ const PRODUCT_PLACEHOLDER_IMAGE = 'https://placehold.co/400x400/e2e8f0/718096/pn
 /**
  * Build a native WhatsApp horizontal carousel payload.
  *
- * Always uses the interactive carousel format (type: 'carousel') regardless of
- * product count. WhatsApp requires at least 2 cards — the caller is responsible
- * for padding to 2 before calling this function.
+ * Follows the exact Meta Cloud API spec for interactive media carousel messages:
+ * https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-media-carousel-messages
  *
- * Image consistency rule: if ANY product has a valid image URL, ALL cards get an
- * image header (products without images receive the placeholder). If NO product
- * has an image, no headers are added and cards render as text-only.
- *
- * The `forceNoImages` flag strips all image headers — used as a retry strategy
- * when Meta rejects the payload due to broken image URLs.
+ * Key requirements from Meta docs:
+ * - 2–10 cards required
+ * - Each card MUST have an image or video header (no text-only cards)
+ * - Each card MUST have type: "cta_url" (even when using quick-reply buttons)
+ * - Quick-reply button format: { type: "quick_reply", quick_reply: { id, title } }
+ *   NOT { type: "reply", reply: { id, title } } — that's the non-carousel format
+ * - Card body text: max 160 characters, max 2 line breaks
+ * - All cards must have the same button type and count
+ * - Main message header/footer/interactive components are NOT supported
  */
 function buildCarouselPayload(msg: CarouselMessage, forceNoImages = false): Record<string, unknown> {
   const products = msg.products.slice(0, 10);
 
-  // Determine whether to include image headers
+  // Determine whether to include image headers.
+  // Meta requires ALL cards to have an image header if ANY card has one.
+  // If forceNoImages is set, we fall back to a text list (carousel won't work without images).
   const anyHasImage = !forceNoImages && products.some(p => p.imageUrl && p.imageUrl.startsWith('http'));
 
   return {
@@ -188,27 +192,41 @@ function buildCarouselPayload(msg: CarouselMessage, forceNoImages = false): Reco
       action: {
         cards: products.map((p, index) => {
           const priceStr = `${p.currency} ${p.price.toFixed(2)}`;
-          const bodyText = p.description
+          // Card body: max 160 chars, max 2 line breaks per Meta spec
+          const rawBody = p.description
             ? `*${p.name}*\n${priceStr}\n${p.description.slice(0, 60)}`
             : `*${p.name}*\n${priceStr}`;
+          const cardBodyText = rawBody.slice(0, 160);
 
-          const card: Record<string, unknown> = {
+          // Image URL: use product image if valid, otherwise placeholder
+          const imageUrl = anyHasImage
+            ? (p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : PRODUCT_PLACEHOLDER_IMAGE)
+            : PRODUCT_PLACEHOLDER_IMAGE;
+
+          return {
             card_index: index,
-            body: { text: bodyText },
+            // type: "cta_url" is required by Meta even when using quick-reply buttons
+            type: 'cta_url',
+            header: {
+              type: 'image',
+              image: { link: imageUrl },
+            },
+            body: { text: cardBodyText },
             action: {
-              buttons: [{ type: 'reply', reply: { id: `order_${p.id}`, title: '🛒 Order Now' } }],
+              // Correct quick-reply format for carousel cards per Meta docs:
+              // { type: "quick_reply", quick_reply: { id, title } }
+              // NOT { type: "reply", reply: { id, title } } — that's for non-carousel interactive
+              buttons: [
+                {
+                  type: 'quick_reply',
+                  quick_reply: {
+                    id: `order_${p.id}`,
+                    title: '🛒 Order Now',
+                  },
+                },
+              ],
             },
           };
-
-          if (anyHasImage) {
-            // Use the product's own image if valid, otherwise the placeholder
-            const imageUrl = p.imageUrl && p.imageUrl.startsWith('http')
-              ? p.imageUrl
-              : PRODUCT_PLACEHOLDER_IMAGE;
-            card['header'] = { type: 'image', image: { link: imageUrl } };
-          }
-
-          return card;
         }),
       },
     },

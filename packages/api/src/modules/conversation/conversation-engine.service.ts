@@ -659,7 +659,7 @@ export async function processInboundMessage(msg) {
           products: carouselProducts,
         });
 
-        // Attempt 2: all-placeholder images (in case a specific URL is broken)
+        // Attempt 2: all-placeholder images (in case a specific product URL is broken/rejected)
         if (!carouselResult.success) {
           console.warn('[ConversationEngine] Carousel attempt 1 failed, retrying with all-placeholder images:', carouselResult.errorMessage);
           const productsAllPlaceholders = carouselProducts.map(p => ({ ...p, imageUrl: PLACEHOLDER }));
@@ -670,16 +670,8 @@ export async function processInboundMessage(msg) {
           });
         }
 
-        // Attempt 3: no images at all (text-only cards)
-        if (!carouselResult.success) {
-          console.warn('[ConversationEngine] Carousel attempt 2 failed, retrying with no images:', carouselResult.errorMessage);
-          carouselResult = await sendMessage(businessId, {
-            type: 'carousel',
-            to: customerWaNumber,
-            products: carouselProducts.map(p => ({ ...p, imageUrl: undefined })),
-            forceNoImages: true,
-          });
-        }
+        // Note: Meta requires image headers on all carousel cards — no text-only fallback possible.
+        // If both attempts fail, we fall through to the plain text list below.
       }
 
       if (carouselResult.success) {
