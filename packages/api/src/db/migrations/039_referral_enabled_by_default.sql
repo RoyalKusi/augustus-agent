@@ -15,8 +15,7 @@ SET referral_code = UPPER(SUBSTRING(REPLACE(id::text, '-', ''), 1, 6) || SUBSTRI
     updated_at = NOW()
 WHERE referral_code IS NULL OR referral_code = '';
 
--- Ensure uniqueness — if any collision exists, append business id suffix
--- (extremely unlikely but safe)
+-- Ensure uniqueness and log completion
 DO $$
 DECLARE
   v_count INT;
@@ -31,7 +30,6 @@ BEGIN
   ) dupes;
 
   IF v_count > 0 THEN
-    -- Fix duplicates by appending last 4 chars of business id
     UPDATE businesses b
     SET referral_code = UPPER(SUBSTRING(REPLACE(b.id::text, '-', ''), 1, 6) || SUBSTRING(REPLACE(b.id::text, '-', ''), 28, 4)),
         updated_at = NOW()
@@ -44,7 +42,7 @@ BEGIN
     );
     RAISE NOTICE '[039] Fixed % duplicate referral codes', v_count;
   END IF;
+
+  RAISE NOTICE '[039] Referral system enabled for all businesses.';
 END;
 $$;
-
-RAISE NOTICE '[039] Referral system enabled for all businesses.';
