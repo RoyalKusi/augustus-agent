@@ -951,19 +951,43 @@ async function handleWebhookEvent(event: WebhookEvent): Promise<void> {
     if (!message) return;
 
     let messageText: string | null = null;
+    let intentOverride: { intent: string; instruction: string } | null = null;
 
     if (message.type === 'text') {
       messageText = message.text?.body ?? null;
     } else if (message.type === 'interactive') {
-      // Quick reply � treat the button title as the message text
       const interactive = message.interactive;
       if (interactive?.type === 'button_reply') {
-        messageText = interactive.button_reply?.title ?? interactive.button_reply?.id ?? null;
+        const buttonId = interactive.button_reply?.id ?? '';
+        const buttonTitle = interactive.button_reply?.title ?? '';
+
+        // Carousel "Order Now" button tap — id is "order_{productId}"
+        if (buttonId.startsWith('order_')) {
+          const productId = buttonId.replace('order_', '');
+          let productName = buttonTitle;
+          try {
+            const prodResult = await pool.query(
+              `SELECT name, price, currency FROM products WHERE id = $1`,
+              [productId],
+            );
+            if (prodResult.rows[0]) {
+              const p = prodResult.rows[0];
+              productName = `${p.name} (${p.currency} ${Number(p.price).toFixed(2)})`;
+            }
+          } catch { /* non-fatal */ }
+
+          messageText = `I want to order ${productName}`;
+          intentOverride = {
+            intent: 'ready_to_buy',
+            instruction: `The customer tapped "Order Now" on the product carousel for: ${productName} (product ID: ${productId}). They are ready to buy. Ask how many units they want, confirm the quantity, then use PAYMENT_TRIGGER to process the order. Do NOT show the carousel again.`,
+          };
+        } else {
+          messageText = buttonTitle || buttonId;
+        }
       } else if (interactive?.type === 'list_reply') {
         messageText = interactive.list_reply?.title ?? interactive.list_reply?.id ?? null;
       }
     }
-
     if (!messageText) {
       console.info('[ConversationEngine] Skipping non-text message', {
         type: message.type,
@@ -979,6 +1003,7 @@ async function handleWebhookEvent(event: WebhookEvent): Promise<void> {
       messageText,
       messageId: message.id ?? '',
       timestamp: parseInt(message.timestamp ?? '0', 10) * 1000 || Date.now(),
+      ...(intentOverride ? { intentOverride } : {}),
     });
   } catch (err) {
     console.error('[ConversationEngine] Error handling webhook event:', err);
