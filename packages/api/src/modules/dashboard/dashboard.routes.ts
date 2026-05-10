@@ -266,6 +266,17 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const biz = meta.rows[0];
       if (!biz) return reply.status(404).send({ error: 'Business not found.' });
 
+      // Auto-generate referral code if missing (handles businesses registered before migration 039)
+      let referralCode = biz.referral_code;
+      if (!referralCode) {
+        const newCode = (request.businessId.replace(/-/g, '').slice(0, 6) + Math.random().toString(36).slice(2, 6)).toUpperCase();
+        await pool.query(
+          `UPDATE businesses SET referral_code = $1, referral_enabled = TRUE, updated_at = NOW() WHERE id = $2`,
+          [newCode, request.businessId],
+        );
+        referralCode = newCode;
+      }
+
       // Join with subscriptions to get the current plan for each referred business
       const referrals = await pool.query<{
         id: string;
@@ -297,8 +308,8 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       );
 
       return reply.send({
-        referralEnabled: biz.referral_enabled,
-        referralCode: biz.referral_code ?? null,
+        referralEnabled: true,
+        referralCode: referralCode,
         totalEarningsUsd: Number(earningsTotals.rows[0]?.total_earnings ?? 0),
         referrals: referrals.rows.map((r) => ({
           id: r.id,

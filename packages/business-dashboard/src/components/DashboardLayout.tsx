@@ -77,7 +77,7 @@ export default function DashboardLayout() {
 
   const logout = () => { localStorage.removeItem('augustus_token'); navigate('/login'); };
 
-  const navItems = baseNavItems.filter(n => !('referralOnly' in n) || referralEnabled);
+  const navItems = baseNavItems;
   const currentLabel = navItems.find(n => location.pathname.startsWith(n.to))?.label ?? 'Dashboard';
 
   const sidebar = (

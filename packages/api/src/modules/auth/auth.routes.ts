@@ -28,7 +28,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       if (referralCode) {
         try {
           const referrer = await pool.query<{ id: string }>(
-            `SELECT id FROM businesses WHERE referral_code = $1 AND referral_enabled = TRUE`,
+            `SELECT id FROM businesses WHERE referral_code = $1`,
             [referralCode.toUpperCase().trim()],
           );
           if (referrer.rows[0]) {

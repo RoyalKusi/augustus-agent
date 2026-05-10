@@ -68,21 +68,6 @@ export default function Referrals() {
 
   if (loading) return <div style={{ color: '#718096', padding: 24 }}>Loading…</div>;
 
-  if (!data?.referralEnabled) {
-    return (
-      <div style={{ maxWidth: 520 }}>
-        <h2 style={{ marginTop: 0 }}>Referrals</h2>
-        <div style={{ padding: '32px 24px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: '#2d3748', marginBottom: 8 }}>Referrals not enabled</div>
-          <div style={{ fontSize: 14, color: '#718096' }}>
-            Contact support to get your referral link activated.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ maxWidth: 680 }}>
       <h2 style={{ marginTop: 0, marginBottom: 4 }}>Referrals</h2>
@@ -132,7 +117,7 @@ export default function Referrals() {
           </button>
         </div>
         <div style={{ marginTop: 10, fontSize: 12, color: '#a0aec0' }}>
-          Code: <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#4a5568' }}>{data.referralCode}</span>
+          Code: <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#4a5568' }}>{data?.referralCode}</span>
         </div>
       </div>
 
@@ -158,7 +143,7 @@ export default function Referrals() {
               </tr>
             </thead>
             <tbody>
-              {data.referrals.map(r => {
+              {data?.referrals.map(r => {
                 const planKey = r.currentPlan?.toLowerCase() ?? null;
                 const planStyle = planKey ? (PLAN_COLORS[planKey] ?? { bg: '#e2e8f0', color: '#4a5568' }) : null;
                 return (
